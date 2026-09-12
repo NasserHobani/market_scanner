@@ -49,12 +49,20 @@ services:
       - pgdata:/var/lib/postgresql/data
     # لا ‎ports‎ عمداً: القاعدة تُرى من شبكة المكدّس وحدها. ونشرها
     # على المضيف يفتح 5432 للإنترنت — وهو أكثر ما يُمسح آلياً.
+    # ═══ الفحص للعرض لا للبوّابة ═══
+    #
+    # يُظهر حال القاعدة في بورتينر. ولا تُعلَّق عليه بقيّة الخدمات —
+    # انظر ``depends_on`` أدناه.
+    #
+    # و‏start_period طويل عمداً: أوّل إقلاع يشغّل ``initdb``، وعلى
+    # قرص خادمٍ صغير قد يتجاوز ذلك دقيقة. والمهلة القصيرة تجعل
+    # القاعدة «غير صحّية» وهي تعمل — تُنشئ نفسها فحسب.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scanner} -d ${POSTGRES_DB:-scanner}"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 12
+      start_period: 90s
 
   # ── الويب ──
   web:
@@ -62,7 +70,23 @@ services:
     image: market-scanner:latest
     restart: unless-stopped
     depends_on:
-      db: {condition: service_healthy}
+      # ═══ ‎service_started‎ لا ‎service_healthy‎ ═══
+      #
+      # كان ``service_healthy``. وأثره أنّ تأخّر القاعدة — أو
+      # فشلها — يُسقط **النشر كلّه** برسالةٍ واحدة:
+      #
+      #     dependency failed to start: container ... is unhealthy
+      #
+      # ولا تقول لماذا، ولا تُقلع حاويةً يمكن قراءة سجلّها.
+      #
+      # والانتظار موجودٌ أصلاً في ``docker-entrypoint.sh``: حلقةٌ
+      # تنتظر القاعدة وتقول ما تنتظره، وتموت برسالةٍ مفهومة إن
+      # طال. فالشرط هنا كان تكراراً — ونسخته الأسوأ، لأنّها
+      # تُجهض المكدّس بدل أن تُشخّص.
+      #
+      # وهذا هو العطب نفسه الذي وقع في ``${VAR:?}``: فحصٌ مكرَّر،
+      # الخارجيّ منه يمنع الإقلاع والداخليّ يشرح.
+      db: {condition: service_started}
     environment:
       # ── ما يحدّده المستخدم ──
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -143,7 +167,8 @@ services:
     depends_on:
       # ‏web يبني الصورة، وهذا ينتظرها — الترتيب مقصود لا تجميل
       web: {condition: service_started}
-      db: {condition: service_healthy}
+      # وانتظار القاعدة في نقطة الدخول لا هنا — انظر تعليق ‎web‎
+      db: {condition: service_started}
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB:-scanner}

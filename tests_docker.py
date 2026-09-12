@@ -225,6 +225,41 @@ check("  ولا مفاتيح فيه",
       or "ALPACA_API_KEY=\n" in tpl)
 
 
+# ═══ ٨أ) فحص الصحّة للعرض لا للبوّابة ═══
+#
+# كان ``depends_on: db: {condition: service_healthy}``. وأثره أنّ
+# تأخّر القاعدة — أو فشلها — يُسقط **النشر كلّه** برسالة:
+#
+#     dependency failed to start: container ... is unhealthy
+#
+# ولا تقول لماذا، ولا تُقلع حاويةً يمكن قراءة سجلّها.
+#
+# والانتظار موجودٌ أصلاً في نقطة الدخول: حلقةٌ تنتظر وتقول ما
+# تنتظره وتموت برسالةٍ مفهومة. فالشرط كان تكراراً — ونسخته
+# الأسوأ، لأنّها تُجهض المكدّس بدل أن تُشخّص.
+#
+# وهو العطب نفسه الذي وقع في ``${VAR:?}``.
+for _n, _sv in SVC.items():
+    _dep = _sv.get("depends_on") or {}
+    _gates = [k for k, v in _dep.items()
+              if isinstance(v, dict) and v.get("condition") == "service_healthy"]
+    check(f"٨أ {_n} لا يُعلَّق على فحص الصحّة", not _gates, str(_gates))
+
+# والفحص باقٍ — للعرض في بورتينر
+check("  والفحص باقٍ على القاعدة", "healthcheck" in SVC["db"])
+# ومهلته تكفي initdb الأوّل على قرصٍ بطيء
+_sp = str(SVC["db"]["healthcheck"].get("start_period", "0s"))
+check("  ومهلته تكفي initdb", int(_sp.rstrip("s")) >= 60, _sp)
+
+# والانتظار في نقطة الدخول يكفي، ويقول ما يُفعل عند الفشل
+check("  والانتظار في نقطة الدخول", "DB_WAIT" in EP)
+check("  ومدّته كافية",
+      int(EP.split("DB_WAIT_SECONDS:-")[1].split("}")[0]) >= 180)
+check("  ويدلّ على سجلّ القاعدة", "docker logs market-scanner-db-1" in EP)
+check("  ويعدّد الأسباب الشائعة",
+      "POSTGRES_PASSWORD فارغ" in EP and "قرص الخادم ممتلئ" in EP)
+
+
 # ═══ ٨ب) لا خدمتان تبنيان وسماً واحداً ═══
 #
 # ‏Compose يبني ما له ``build`` **بالتوازي**. وخدمتان بوسمٍ واحد
