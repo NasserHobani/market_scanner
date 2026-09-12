@@ -1,0 +1,200 @@
+{% extends "dashboard/base.html" %}
+{% load static l10n fmt assets %}
+{% block title %}بحث · ماسح الأسواق{% endblock %}
+
+{% block content %}
+<form method="get" action="/search/" class="mb-3">
+  <div class="input-group">
+    <select name="m" class="form-select flex-grow-0" style="max-width:150px"
+            aria-label="نطاق البحث">
+      {% for sc in scopes %}
+        <option value="{{ sc.key }}"
+          {% if sc.key == scope %}selected{% endif %}>{{ sc.label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="q" value="{{ query }}" autofocus class="form-control"
+           placeholder="ابحث برمز العملة أو اسم السهم — مثل BTC أو Apple أو 2222">
+    <button type="submit" class="btn btn-primary px-4">بحث</button>
+  </div>
+  <div class="muted small mt-2">
+    تحديد السوق يسأل مصدره وحده. «كل الأسواق» يسأل الاثنين معاً بالتوازي،
+    لكن سرعته تبقى سرعة أبطأهما — واختيارك يُحفظ للمرة القادمة.
+    {% if elapsed is not None %}
+      <span class="ms-2">استغرق البحث {{ elapsed|num:1 }}ث.</span>
+    {% endif %}
+  </div>
+</form>
+
+{% if error %}
+  <div class="alert alert-danger">
+    <strong>تعذّر البحث</strong><br>
+    <span class="small">{{ error }}</span>
+  </div>
+{% endif %}
+
+{% if results %}
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">النتائج — اختر رمزاً لتحليله</h2>
+    <div class="table-wrap">
+    <table class="table table-hover table-borderless align-middle" style="table-layout:auto">
+      <thead><tr><th>الرمز</th><th>الاسم</th><th>السوق</th><th></th></tr></thead>
+      <tbody>
+      {% for r in results %}
+        <tr>
+          <td class="fw-semibold">{{ r.symbol }}</td>
+          <td class="dim">{{ r.name }}</td>
+          <td class="dim">{{ r.market }}</td>
+          <td><a href="/search/?symbol={{ r.symbol|urlencode }}&market={{ r.market }}&m={{ scope }}">حلّل ←</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div></div>
+{% elif query and not analysis and not error %}
+  <div class="card"><div class="card-body empty">
+    لا نتائج لـ «{{ query }}» ضمن
+    <strong>{% for sc in scopes %}{% if sc.key == scope %}{{ sc.label }}{% endif %}{% endfor %}</strong>
+    <br>
+    <span class="small">
+      {% if scope != "all" %}
+        جرّب «كل الأسواق» أولاً — النطاق المحدّد لا يسأل بقية المصادر.<br>
+      {% endif %}
+      أو جرّب رمز العملة وحده (BTC) أو مع اللاحقة (BTCUSDT)،
+      أو اسم الشركة للأسهم (Apple).
+    </span>
+  </div></div>
+{% endif %}
+
+{% if analysis %}
+{% with a=analysis r=analysis.reco %}
+<div class="meta mb-3">
+  <h1 class="h5 mb-0">{{ a.symbol }}</h1>
+  <span class="fs-5 fw-semibold {% if a.score > 0 %}up{% elif a.score < 0 %}down{% endif %}"
+        >{{ a.score|num:1 }}</span>
+  <span class="muted small">{{ a.decision }} · {{ a.timeframe }} · {{ a.candles }} شمعة</span>
+  <span class="muted small">السعر {{ a.close|price }}</span>
+  <a class="ms-auto small" href="/symbol/{{ a.market }}/{{ a.symbol|urlencode }}/"
+    >الصفحة الكاملة ←</a>
+  <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="ai-analyze-search"
+    data-symbol="{{ a.symbol }}" data-market="{{ a.market }}" data-tf="{{ a.timeframe }}"
+    >حلّل بالذكاء</button>
+</div>
+
+<div class="card mb-3 border-{% if r.action == 'now' %}success{% elif r.action == 'pending' %}warning{% else %}secondary{% endif %}">
+ <div class="card-body">
+  <h2 class="h6 {% if r.action == 'now' %}up{% elif r.action == 'pending' %}warn{% else %}dim{% endif %}">
+    {{ r.headline }}
+    <span class="muted fw-normal small">· ثقة {{ r.confidence|pct:0 }}</span>
+  </h2>
+
+  {% if r.entry %}
+    <table class="table table-sm table-borderless w-auto mb-3">
+      <tbody>
+        <tr><td class="dim">الدخول</td><td class="fw-semibold">{{ r.entry|price }}</td></tr>
+        <tr><td class="dim">وقف الخسارة</td><td class="down">{{ r.stop|price }}</td></tr>
+        <tr><td class="dim">الأهداف</td><td class="up">
+          {% for t in r.targets %}{{ t|price }}{% if not forloop.last %} · {% endif %}{% endfor %}
+        </td></tr>
+        <tr><td class="dim">العائد/المخاطرة</td><td>{{ r.rr|ratio }}</td></tr>
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if r.trigger %}
+    <div class="alert alert-warning py-2 small mb-3">{{ r.trigger }}</div>
+  {% endif %}
+
+  {% if r.reasons %}<div class="mb-2"><span class="dim small">الأسباب:</span>
+    {% for x in r.reasons %}<span class="badge text-bg-success m-1">{{ x }}</span>{% endfor %}</div>{% endif %}
+  {% if r.warnings %}<div><span class="dim small">تحذيرات:</span>
+    {% for x in r.warnings %}<span class="badge text-bg-warning m-1">{{ x }}</span>{% endfor %}</div>{% endif %}
+ </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6">الشارت</h2><div id="tv"></div>
+    </div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6">التحليل التفصيلي</h2>
+      <table class="table table-sm table-borderless align-middle"><tbody>
+        <tr><td class="dim">الفريم الأعلى</td><td>{{ a.htf_text }}</td></tr>
+        <tr><td class="dim">عناصر الالتقاء</td>
+            <td>{% if a.confluence %}{{ a.confluence|join:" · " }}{% else %}—{% endif %}</td></tr>
+        <tr><td class="dim">نماذج الشموع</td>
+            <td>{% if a.reco.analysis.candles %}{{ a.reco.analysis.candles|join:"، " }}{% else %}—{% endif %}</td></tr>
+        <tr><td class="dim">النماذج السعرية</td><td>
+          {% for p in a.reco.analysis.chart_patterns %}
+            {{ p.arabic }} <span class="dim">({{ p.confidence|pct:0 }})</span>{% if not forloop.last %} · {% endif %}
+          {% empty %}—{% endfor %}</td></tr>
+        <tr><td class="dim">موجات إليوت</td><td>
+          {% if a.reco.analysis.elliott %}
+            {{ a.reco.analysis.elliott.label }}
+            <span class="dim">(ثقة {{ a.reco.analysis.elliott.confidence|pct:0 }})</span>
+          {% else %}لا عدّ صالح{% endif %}</td></tr>
+        <tr><td class="dim">القناة</td><td>
+          {% if a.reco.analysis.channel %}{{ a.reco.analysis.channel.kind }} ·
+            {{ a.reco.analysis.channel.zone }}{% else %}—{% endif %}</td></tr>
+        <tr><td class="dim">RSI</td><td>{{ a.rsi|num:1 }}</td></tr>
+        <tr><td class="dim">RVOL</td><td>{{ a.rvol|num:2 }}</td></tr>
+        <tr><td class="dim">ATR%</td><td>{{ a.atr_pct|pct:2 }}</td></tr>
+      </tbody></table>
+
+      {% if a.reco.analysis.elliott %}
+        <p class="muted small mb-0">
+          عدّ الموجات اجتهادي بطبيعته ويتغيّر أثراً رجعياً مع كل موجة جديدة.
+          القواعد الثلاث غير القابلة للكسر مستوفاة هنا، لكن هذا لا يجعله يقيناً.
+        </p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+{{ tvdata|json_script:"tv-data" }}
+{% endwith %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if analysis %}
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+(function () {
+  var el = document.getElementById("tv-data");
+  if (!el) return;
+  var d = JSON.parse(el.textContent);
+  if (typeof TradingView === "undefined") {
+    document.getElementById("tv").innerHTML =
+      '<div class="empty">تعذّر تحميل الشارت</div>';
+    return;
+  }
+  new TradingView.widget({
+    container_id: "tv", autosize: true, symbol: d.symbol, interval: d.interval,
+    timezone: "Etc/UTC", theme: "dark", style: "1", locale: "ar",
+    toolbar_bg: "var(--ds-surface-1)", hide_side_toolbar: false, allow_symbol_change: false,
+    studies: ["Volume@tv-basicstudies"]
+  });
+})();
+</script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/ai-advisor-explain.js' %}"></script>
+<script>
+(function () {
+  var btn = document.getElementById("ai-analyze-search");
+  if (btn && window.AIExplain) {
+    btn.addEventListener("click", function () {
+      AIExplain.runManualAnalysis({
+        symbol: btn.getAttribute("data-symbol"),
+        market: btn.getAttribute("data-market"),
+        timeframe: btn.getAttribute("data-tf"),
+      });
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

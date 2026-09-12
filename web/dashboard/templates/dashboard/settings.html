@@ -1,0 +1,356 @@
+{% extends "dashboard/base.html" %}
+{% load static l10n %}
+{% block title %}الإعدادات · CS Edge{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>الإعدادات</h1>
+    <p>ما القيود التي يعمل ضمنها النظام؟</p>
+  </div>
+</header>
+
+{% if saved %}
+  <div class="alert {% if notes %}alert-warning{% else %}alert-success{% endif %} py-2">
+    {% if notes %}
+      حُفظت مع تعديلات:
+      <ul class="mb-0 mt-1">
+        {% for n in notes %}<li>{{ n }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      حُفظت الإعدادات. تسري على المسح التالي.
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if liquidity_gap.missing %}
+  <div class="card mb-3 border-warning"><div class="card-body">
+    <h2 class="h6 warn">فلتر السيولة معطّل لأن البيانات تنقصه</h2>
+    <p class="small mb-2">
+      {{ liquidity_gap.missing }} من {{ liquidity_gap.total }} نتيجة محفوظة
+      بلا حجم تداول، لأنها حُفظت قبل إضافة هذا العمود. الشموع موجودة على
+      القرص، فيمكن حساب الحجم منها بلا أي طلب شبكة.
+    </p>
+    <button class="btn btn-sm btn-primary" id="backfill">احسب السيولة الآن</button>
+    <span class="small muted ms-2" id="backfill-state"></span>
+  </div></div>
+{% endif %}
+
+<form method="post" id="settings-form">
+  {% csrf_token %}
+
+  {% for g in groups %}
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6 mb-1">{{ g.title }}</h2>
+      {% if g.note %}<p class="muted small">{{ g.note }}</p>{% endif %}
+
+      <div class="row g-3">
+        {% for f in g.fields %}
+          <div class="col-md-6 col-xl-4">
+            <label class="form-label small mb-1" for="f-{{ f.key }}">
+              {{ f.label }}
+              {% if f.unit %}<span class="muted">({{ f.unit }})</span>{% endif %}
+              {% if f.changed %}
+                <span class="badge text-bg-secondary">مُعدَّل</span>
+              {% endif %}
+            </label>
+
+            {% if f.kind == "bool" %}
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="f-{{ f.key }}" name="{{ f.key }}"
+                       {% if f.value %}checked{% endif %}>
+                <label class="form-check-label small muted" for="f-{{ f.key }}"
+                  >{% if f.value %}مُفعَّل{% else %}مُعطَّل{% endif %}</label>
+              </div>
+            {% elif f.kind == "choice" %}
+              <select class="form-select form-select-sm" id="f-{{ f.key }}"
+                      name="{{ f.key }}">
+                {% for value, label in f.choices %}
+                  <option value="{{ value }}"
+                    {% if value == f.value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            {% elif f.kind == "text" %}
+              <input class="form-control form-control-sm" type="text"
+                     id="f-{{ f.key }}" name="{{ f.key }}"
+                     value="{{ f.value }}" dir="ltr">
+            {% else %}
+              <input class="form-control form-control-sm" type="number"
+                     id="f-{{ f.key }}" name="{{ f.key }}"
+                     value="{{ f.value|unlocalize }}"
+                     {% if f.min is not None %}min="{{ f.min|unlocalize }}"{% endif %}
+                     {% if f.max is not None %}max="{{ f.max|unlocalize }}"{% endif %}
+                     step="{% if f.step %}{{ f.step|unlocalize }}{% elif f.kind == 'int' %}1{% else %}any{% endif %}">
+            {% endif %}
+
+            <div class="muted mt-1" style="font-size:.72rem">
+              {{ f.help }}
+              <span class="d-block">الافتراضي: {{ f.default|unlocalize }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div></div>
+  {% endfor %}
+
+  <div class="d-flex gap-2 flex-wrap align-items-center mb-4">
+    <button type="submit" class="btn btn-primary">حفظ</button>
+    <button type="submit" name="action" value="reset"
+            class="btn btn-outline-secondary" id="reset-btn"
+      >استعادة الافتراضي</button>
+    <span class="small muted">
+      التعديلات تسري على المسح التالي — لا حاجة لإعادة تشغيل الخادم.
+    </span>
+  </div>
+</form>
+
+{% if ai_advisor_status %}
+<div class="card mb-3" id="ai-advisor-status-card"><div class="card-body">
+  <h2 class="h6 mb-2">حالة مستشار الذكاء الاصطناعي</h2>
+  <div class="row g-2 small">
+    <div class="col-md-4">
+      <span class="muted">المزوّد:</span>
+      <strong dir="ltr">{{ ai_advisor_status.default_provider|default:"—" }}</strong>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">النموذج:</span>
+      <strong dir="ltr">{{ ai_advisor_status.claude_model|default:"—" }}</strong>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">الحالة:</span>
+      <span id="ai-connection-status">
+      {% if ai_advisor_status.provider_status or ai_advisor_status.runtime_status == "running" %}
+        <span class="up">{% if ai_advisor_status.runtime_status == "running" %}يعمل{% else %}متصل{% endif %}</span>
+      {% elif ai_advisor_status.runtime_status == "failed" %}
+        <span class="down">فشل</span>
+      {% elif ai_advisor_status.api_key_configured %}
+        <span class="warn">غير متصل</span>
+      {% else %}
+        <span class="down">مفتاح API غير مضبوط</span>
+      {% endif %}
+      </span>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">الزمن:</span>
+      <span dir="ltr" id="ai-latency-ms">{% if ai_advisor_status.latency_ms %}{{ ai_advisor_status.latency_ms }} ms{% else %}—{% endif %}</span>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">آخر نجاح:</span>
+      <span dir="ltr">{{ ai_advisor_status.last_success|default:"—" }}</span>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">وضع الظل:</span>
+      {% if ai_advisor_status.shadow_mode %}<span class="up">مُفعَّل</span>{% else %}<span class="muted">مُعطَّل</span>{% endif %}
+    </div>
+    <div class="col-md-4">
+      <span class="muted">التقييم:</span>
+      {% if ai_advisor_status.evaluation_enabled %}<span class="up">مُفعَّل</span>{% else %}<span class="muted">مُعطَّل</span>{% endif %}
+    </div>
+    <div class="col-md-4">
+      <span class="muted">التعلّم:</span>
+      {% if ai_advisor_status.learning_enabled %}<span class="up">مُفعَّل</span>{% else %}<span class="muted">مُعطَّل</span>{% endif %}
+    </div>
+    <div class="col-md-4">
+      <span class="muted">مفتاح API:</span>
+      {% if ai_advisor_status.api_key_configured %}<span class="up">مضبوط</span>{% else %}<span class="down">غير مضبوط</span>{% endif %}
+    </div>
+  </div>
+  <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
+    <button type="button" class="btn btn-sm btn-outline-primary" id="ai-test-connection">
+      اختبار الاتصال
+    </button>
+    <span class="small muted" id="ai-test-state"></span>
+  </div>
+</div></div>
+{% endif %}
+
+{% if local_ai_status %}
+<div class="card mb-3" id="local-ai-status-card"><div class="card-body">
+  <h2 class="h6 mb-2">الذكاء المحلي (Ollama)</h2>
+  <div class="row g-2 small">
+    <div class="col-md-4">
+      <span class="muted">الحالة:</span>
+      <strong id="local-ai-runtime-status">{{ local_ai_status.status|default:"NOT READY" }}</strong>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">وضع التنفيذ:</span>
+      <strong dir="ltr">{{ local_ai_status.execution_mode|default:"claude_only" }}</strong>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">النموذج:</span>
+      <strong dir="ltr">{{ local_ai_status.default_model|default:"—" }}</strong>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">Ollama:</span>
+      <span id="local-ollama-status">
+      {% if local_ai_status.ollama_reachable %}
+        <span class="up">متصل</span>
+      {% elif local_ai_status.enabled %}
+        <span class="down">غير متصل</span>
+      {% else %}
+        <span class="muted">معطّل</span>
+      {% endif %}
+      </span>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">مراجعات محلية:</span>
+      <span dir="ltr">{{ local_ai_status.total_reviews|default:0 }}</span>
+    </div>
+    <div class="col-md-4">
+      <span class="muted">آخر مراجعة:</span>
+      <span dir="ltr" id="local-last-review">
+        {% if local_ai_status.last_review %}{{ local_ai_status.last_review.review_id }}{% else %}—{% endif %}
+      </span>
+    </div>
+  </div>
+  <div class="mt-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="local-ai-test">
+      اختبار Ollama
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="local-ai-refresh-models">
+      تحديث النماذج
+    </button>
+    <span class="small muted" id="local-ai-test-state"></span>
+  </div>
+</div></div>
+{% endif %}
+
+<div class="alert alert-secondary small">
+  <strong>ملاحظات تستحق الانتباه.</strong>
+  خفض <strong>أدنى حجم لدخول المسح</strong> يوسّع التغطية ويطيل زمن المسح
+  في الوقت نفسه — والرموز الصغيرة تحتاج حذراً إضافياً لأن أمراً واحداً
+  كبيراً يحرّكها.
+  <br>
+  <strong>شموع التاريخ</strong> دون 800 تُعطّل فلتر الفريم الأعلى فتُحجب
+  معظم الإشارات — وهذا خلل حدث فعلاً في هذا المشروع من قبل.
+  <br>
+  <strong>أقصى عدد رموز</strong> أسرع وسيلة لتقصير المسح، ويُبقي الأكثر
+  سيولة لأن الترتيب بحجم التداول.
+  {% if storage_format == "csv" %}
+    <hr class="my-2">
+    التخزين الآن <code dir="ltr">csv</code>.
+    <code dir="ltr">pip install pyarrow</code> ينقله إلى parquet فتنخفض
+    قراءة الملفات وكتابتها كثيراً.
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById("backfill");
+  if (!btn) return;
+  var state = document.getElementById("backfill-state");
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    state.textContent = "يحسب…";
+    state.className = "small muted ms-2";
+    window.postJSON("/api/backfill-liquidity/")
+      .then(function (d) {
+        if (!d.ok) {
+          state.textContent = d.reason || "تعذّر الحساب";
+          state.className = "small down ms-2";
+          btn.disabled = false;
+          return;
+        }
+        state.textContent = d.reason + (d.remaining ? " · بقي " + d.remaining : "");
+        state.className = "small up ms-2";
+        if (d.updated) setTimeout(function () { location.reload(); }, 1200);
+        else btn.disabled = false;
+      })
+      .catch(function (e) {
+        state.textContent = "تعذّر الاتصال: " + (e && e.message ? e.message : e);
+        state.className = "small down ms-2";
+        btn.disabled = false;
+      });
+  });
+})();
+
+(function () {
+  var btn = document.getElementById("ai-test-connection");
+  if (!btn) return;
+  var state = document.getElementById("ai-test-state");
+  var statusEl = document.getElementById("ai-connection-status");
+  var latencyEl = document.getElementById("ai-latency-ms");
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    state.textContent = "يختبر…";
+    state.className = "small muted";
+    window.postJSON("/api/ai-advisor/test-connection/")
+      .then(function (d) {
+        if (d.connected) {
+          state.textContent = "متصل · " + (d.latency_ms || "—") + " ms · " + (d.model || "");
+          state.className = "small up";
+          if (statusEl) {
+            statusEl.innerHTML = '<span class="up">متصل</span>';
+          }
+          if (latencyEl && d.latency_ms) {
+            latencyEl.textContent = d.latency_ms + " ms";
+          }
+        } else {
+          state.textContent = d.error || "فشل الاتصال";
+          state.className = "small down";
+        }
+        btn.disabled = false;
+      })
+      .catch(function (e) {
+        state.textContent = "تعذّر الاتصال: " + (e && e.message ? e.message : e);
+        state.className = "small down";
+        btn.disabled = false;
+      });
+  });
+})();
+
+(function () {
+  var btn = document.getElementById("local-ai-test");
+  if (!btn) return;
+  var state = document.getElementById("local-ai-test-state");
+  var ollamaStatus = document.getElementById("local-ollama-status");
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    if (state) state.textContent = "يختبر…";
+    window.postJSON("/api/ai/local/test/")
+      .then(function (d) {
+        if (d.connected) {
+          if (state) {
+            state.textContent = "متصل · " + (d.model || "");
+            state.className = "small up";
+          }
+          if (ollamaStatus) ollamaStatus.innerHTML = '<span class="up">متصل</span>';
+        } else {
+          if (state) {
+            state.textContent = d.error || "فشل الاتصال";
+            state.className = "small down";
+          }
+        }
+        btn.disabled = false;
+      })
+      .catch(function (e) {
+        if (state) {
+          state.textContent = "تعذّر الاتصال: " + (e && e.message ? e.message : e);
+          state.className = "small down";
+        }
+        btn.disabled = false;
+      });
+  });
+  var refreshBtn = document.getElementById("local-ai-refresh-models");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", function () {
+      refreshBtn.disabled = true;
+      fetch("/api/ai/local/models/", { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (state && d.ok) {
+            var n = (d.runtime_models || []).length;
+            state.textContent = n + " نموذج متاح";
+            state.className = "small muted";
+          }
+          refreshBtn.disabled = false;
+        })
+        .catch(function () { refreshBtn.disabled = false; });
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+# AI provider dependencies — optional, install when enabling live providers
+anthropic>=0.39.0
+
+# ═══ نموذج التنبؤ — اختياري لكنّه مقصود ═══
+#
+# بلا هذه المكتبة يرتدّ التدريب إلى sklearn ثمّ إلى مصنّفٍ بسيط
+# مكتوب بيد. والثلاثة تُنتج «نموذجاً» يعمل، فتقول الشاشة «نشط»
+# ويظنّه القارئ LightGBM. فاسم المحرّك يُعرض صراحةً في
+# ‏train_predictor، والتثبيت هنا يجعله المقصود لا البديل.
+lightgbm>=4.0
+scikit-learn>=1.3

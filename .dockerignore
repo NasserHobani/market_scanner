@@ -1,0 +1,44 @@
+# ═══ ما لا يدخل الصورة ═══
+#
+# ‏docker build يرسل المجلّد كلّه إلى المحرّك أوّلاً. ومجلّد
+# ``data`` وحده ٤٤٨ ميغابايت — فبلا هذا الملفّ يصير كل بناءٍ
+# بطيئاً، وتصير الصورة تحمل شموعاً تُحدَّث كل ساعة.
+#
+# والأهمّ: ‎.env‎ يحمل مفاتيح Alpaca وتيليجرام. ودخولها الصورة
+# يعني أنّ كلّ من يسحبها يقرأها بـ ``docker history`` — ولو لم
+# تُرفع إلى GitHub قطّ.
+
+# أسرار
+.env
+.env.*
+!.env.example
+*.key
+
+# بيانات ومخرجات — أحجامٌ كبيرة تُركَّب كوحدات تخزين لا تُنسَخ
+data/
+reports/
+staticfiles/
+*.sqlite3
+*.sqlite3-*
+*.bak-*
+
+# مخلّفات
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# لا لزوم لها في الخادم
+.git/
+.gitignore
+.idea/
+.vscode/
+*.bat
+tests_*.py
+tests_*.js
+tools_*.py
+docs/
+*.md
+!README.md

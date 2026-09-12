@@ -1,0 +1,46 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}الصفقات الذهبية · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>الصفقات الذهبية</h1>
+    <p>أفضل مرشّح من كل سوق — وسبب اختياره مكتوباً.</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="golden-meta">—</span>
+    <button type="button" class="ds-btn ds-btn--primary" id="refresh">حدّث</button>
+  </div>
+</header>
+
+{% comment %}
+«ذهبية» تصف الترتيب لا النتيجة. والتنبيه ثابت لأنّ اسم الصفحة
+نفسه يوحي بضمانٍ لا يملكه أحد — وقِيس على ٢٩٥ صفقة محسومة فلم
+يفصل التصنيف A عن C بفارقٍ يتجاوز الصدفة.
+{% endcomment %}
+<div class="ds-insight ds-insight--warn" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">«ذهبية» تعني الأفضل اليوم بمقياسٍ مكتوب — لا الرابحة</p>
+    <p class="ds-insight__text">
+      الترتيب مركّب ومعروض بتفصيله تحت كل بطاقة. ومعدّل فوزك المقيس
+      <strong>46.4٪</strong> على 295 صفقة محسومة، ولم يثبت أنّ الأعلى
+      ترتيباً يفوز أكثر — فاحكم بالتفصيل لا بالمركز.
+    </p>
+  </div>
+</div>
+
+<div id="golden-grid" class="ds-metrics" style="align-items:start"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/advice.js' %}"></script>
+<script src="{% asset 'dashboard/golden-page.js' %}"></script>
+{% endblock %}

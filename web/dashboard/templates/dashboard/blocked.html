@@ -1,0 +1,93 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}الرموز المحظورة · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>الرموز المحظورة</h1>
+    <p>ما لا يُمسح ولا يُحلَّل ولا تُفتح عليه صفقة.</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="blocked-meta">—</span>
+  </div>
+</header>
+
+{% comment %}
+حدٌّ يجب أن يُقرأ: النظام لا يفتي ولا يضيف رمزاً هنا من تلقائه.
+وفرزُ ‎scanner/compliance.py‎ يقول «يحتاج مراجعة» ولا يمنع شيئاً —
+أمّا هذه فقرارُ صاحبها، والبرنامج ينفّذه.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">هذه قائمتك أنت — والنظام لا يفتي</p>
+    <p class="ds-insight__text">
+      لا يُضاف رمز هنا تلقائياً أبداً. والفرز الشرعي في الماسح
+      تصنيفٌ مبدئيّ يقول «يحتاج مراجعة» ولا يمنع؛ أمّا الحظر هنا
+      فيقطع الرمز من قائمة المسح قبل أوّل نداء شبكة. وحقل
+      <strong>المصدر</strong> لك: على أيّ هيئةٍ أو فتوى بنيت، ومتى تراجع.
+    </p>
+  </div>
+</div>
+
+<section class="ds-card mb-4">
+  <div class="ds-card__head"><h3 class="ds-card__title">احظر رموزاً</h3></div>
+  <div class="p-3">
+    <form id="block-form" class="ds-filterbar" style="margin:0">
+      <label class="ds-field">
+        <span class="ds-field__label">السوق</span>
+        <select name="market" class="ds-input" style="width:8rem" required>
+          {% for m in market_options %}
+            <option value="{{ m.key }}">{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="ds-field" style="flex:1 1 16rem">
+        <span class="ds-field__label">الرموز (سطر أو فاصلة بين كلٍّ)</span>
+        <input type="text" name="symbols" class="ds-input"
+               style="width:100%" required
+               placeholder="AAVE, COMP, 1120.SR">
+      </label>
+      <label class="ds-field">
+        <span class="ds-field__label">النطاق</span>
+        <select name="scope" class="ds-input" style="width:11rem">
+          {% for key, label in scopes %}
+            <option value="{{ key }}"{% if key == "base" %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="ds-field" style="flex:1 1 10rem">
+        <span class="ds-field__label">السبب</span>
+        <input type="text" name="reason" class="ds-input" style="width:100%"
+               placeholder="إقراض بفائدة">
+      </label>
+      <label class="ds-field" style="flex:1 1 10rem">
+        <span class="ds-field__label">المصدر</span>
+        <input type="text" name="source" class="ds-input" style="width:100%"
+               placeholder="هيئة كذا · فتوى رقم…">
+      </label>
+      <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm">احظر</button>
+    </form>
+    <p class="small muted mt-2" id="block-result"></p>
+  </div>
+</section>
+
+<div class="ds-widget" id="w-blocked" data-state="loading">
+  <div class="ds-widget__skeleton">
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+  </div>
+  <div class="ds-widget__content"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/blocked-page.js' %}"></script>
+{% endblock %}

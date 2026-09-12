@@ -1,0 +1,144 @@
+{% extends "dashboard/base.html" %}
+{% load static assets fmt %}
+
+{% block title %}مختبر البحث · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>مختبر البحث الكمّي</h1>
+    <p>هل هذه الميزة حقيقية أم صدفة؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <a class="ds-btn" href="/analytics/">التحليلات</a>
+    <a class="ds-btn ds-btn--primary"
+       href="/api/research/export/{{ payload.query }}{% if payload.query %}&{% else %}?{% endif %}format=json">
+      صدّر JSON
+    </a>
+  </div>
+</header>
+
+{% comment %}
+═══ مقاييس الأداء — بوحدة R لا بالنسبة المئوية ═══
+
+النسبة المئوية تحتاج رأس مالٍ ومقدار مخاطرةٍ لكل صفقة، وليس في
+السجلّ حجمُ مركزٍ واحد: الصفقات تُسجَّل بالدخول والوقف والهدف، لا
+بالمبلغ. فالعائد بـ R — «كم ضعفاً لما تخاطر به» — وهو صادق وقابل
+للتحويل متى عُرف المبلغ. وعرضُه نسبةً يتطلّب اختراع رأس مال.
+{% endcomment %}
+{% if stats.settled %}
+<div class="ds-metrics mb-4">
+  <div class="ds-metric ds-metric--sm{% if stats.total_r > 0 %} ds-metric--success{% else %} ds-metric--risk{% endif %}">
+    <span class="ds-metric__label">المحصّلة</span>
+    <span class="ds-metric__value">{{ stats.total_r|rmult:1 }}R</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">{{ stats.settled }} صفقة محسومة</span></span>
+  </div>
+  <div class="ds-metric ds-metric--sm ds-metric--risk">
+    <span class="ds-metric__label">أقصى تراجع</span>
+    <span class="ds-metric__value">{{ stats.max_dd_r|rmult:1 }}R</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">أعمق هبوط عن القمّة</span></span>
+  </div>
+  <div class="ds-metric ds-metric--sm">
+    <span class="ds-metric__label">نسبة الفوز</span>
+    <span class="ds-metric__value">{{ stats.win_rate }}٪</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">[{{ stats.win_low }}–{{ stats.win_high }}٪]</span></span>
+  </div>
+  <div class="ds-metric ds-metric--sm">
+    <span class="ds-metric__label">عامل الربح</span>
+    <span class="ds-metric__value">{{ stats.profit_factor|default:"—" }}</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">ربح ÷ خسارة</span></span>
+  </div>
+  <div class="ds-metric ds-metric--sm">
+    <span class="ds-metric__label">شارب لكل صفقة</span>
+    <span class="ds-metric__value">{{ stats.sharpe_per_trade|default:"—" }}</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">لا يُسنَّن — الوتيرة غير ثابتة</span></span>
+  </div>
+  <div class="ds-metric ds-metric--sm">
+    <span class="ds-metric__label">متوسّط R</span>
+    <span class="ds-metric__value">{{ stats.avg_r|rmult }}</span>
+    <span class="ds-metric__foot"><span class="ds-text-muted">الوسيط {{ stats.median_r|rmult }}</span></span>
+  </div>
+</div>
+{% endif %}
+
+<div class="ds-widget" id="w-research-auto" data-state="loading">
+  <div class="ds-widget__skeleton ds-card">
+    <div class="ds-skel ds-skel-text w40"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+  </div>
+  <div class="ds-widget__error"></div>
+  <div class="ds-widget__content"></div>
+</div>
+
+<div class="ds-tabs" id="research-tabs">
+  <button type="button" class="ds-tab" data-tab="confidence">الثقة الإحصائية</button>
+  <button type="button" class="ds-tab" data-tab="experiments">التجارب</button>
+  <button type="button" class="ds-tab" data-tab="baselines">مقارنة الأساس</button>
+  <button type="button" class="ds-tab" data-tab="export">التصدير</button>
+</div>
+
+<div id="research-panels">
+  <div class="ds-tab-panel" data-tab-panel="confidence">
+    <div class="ds-widget" id="w-confidence" data-state="loading">
+      <div class="ds-widget__skeleton ds-card">
+        <div class="ds-skel ds-skel-text w40"></div>
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+
+  <div class="ds-tab-panel" data-tab-panel="experiments">
+    <div class="ds-widget" id="w-experiments" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+
+  <div class="ds-tab-panel" data-tab-panel="baselines">
+    <div class="ds-widget" id="w-baselines" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+
+  <div class="ds-tab-panel" data-tab-panel="export">
+    <div class="research-grid">
+      <div class="ds-card">
+        <div class="ds-card__head"><h3 class="ds-card__title">تصدير JSON</h3></div>
+        <p class="ds-text-sm ds-text-muted">حزمة البحث كاملة: الصحة، التجارب، مساهمة العوامل ومقارنة الأساس — بالمرشّحات الحالية.</p>
+        <a class="ds-btn ds-btn--primary"
+           href="/api/research/export/{{ payload.query }}{% if payload.query %}&{% else %}?{% endif %}format=json">نزّل JSON</a>
+      </div>
+      <div class="ds-card">
+        <div class="ds-card__head"><h3 class="ds-card__title">تصدير CSV</h3></div>
+        <p class="ds-text-sm ds-text-muted">جدول مسطّح (قسم · مفتاح · قيمة) للفتح في أي برنامج جداول أو دفتر تحليل.</p>
+        <a class="ds-btn"
+           href="/api/research/export/{{ payload.query }}{% if payload.query %}&{% else %}?{% endif %}format=csv">نزّل CSV</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ payload|json_script:"page-data" }}
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/research-widgets.js' %}"></script>
+<script src="{% asset 'dashboard/research-page.js' %}"></script>
+{% endblock %}

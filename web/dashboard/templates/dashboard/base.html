@@ -1,0 +1,405 @@
+{% load qs static assets  %}<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>{% block title %}ماسح الأسواق{% endblock %}</title>
+
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.rtl.min.css">
+
+{% comment %}
+═══ الخطوط ═══
+تُجلب من CDN وتُسبَق بـ preconnect: بلا ذلك ينتظر المتصفّح انتهاء
+تحليل CSS قبل أن يبدأ وصل الشبكة أصلاً.
+
+و‎display=swap‎ يعرض النصّ بالبديل فوراً ثمّ يستبدله — فالصفحة لا
+تبقى بيضاء إن بطؤت الشبكة، والقراءة لا تتوقّف إن انقطعت. وسلسلة
+البدائل في ‎--ds-font-*‎ تنتهي بخطّ عربيّ صراحةً.
+{% endcomment %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<link rel="stylesheet" href="{% asset 'dashboard/design-system.css' %}">
+<style>
+/* ═══ لماذا لا تُعرَّف الألوان هنا ═══
+
+   كانت ‎--warn‎ و‎--dim‎ معرَّفتين **مرّتين**: هنا وفي
+   ‎design-system.css‎، بقيمتين مختلفتين (‎var(--ds-warn)‎ مقابل ‎#e8c05a‎).
+   وهذا الملفّ يأتي بعد الرابط فيغلب — أي أنّ نصف الرموز في نظام
+   التصميم كان ميّتاً بلا أن يُعلن شيء.
+
+   فالقيم كلّها الآن في ‎design-system.css‎، وما هنا **أسماءٌ
+   مستعارة** تشير إليها. الاسم القصير يبقى لأنّ آلاف الأسطر
+   تستعمله؛ والقيمة لا تُكرَّر. */
+:root{
+  --bs-body-bg:var(--ds-surface-0); --bs-body-color:var(--ds-text);
+  --bs-border-color:var(--ds-line); --bs-secondary-bg:var(--ds-surface-1);
+  --bs-tertiary-bg:var(--ds-surface-2); --bs-emphasis-color:var(--ds-text-strong);
+  --up:var(--ds-success); --down:var(--ds-risk);
+  --warn:var(--ds-warn); --dim:var(--ds-text-muted);
+}
+body{font-family:var(--ds-font-body);
+     -webkit-text-size-adjust:100%}
+h1,h2,h3,h4,h5,h6,.ds-drawer__title{font-family:var(--ds-font-head);
+     letter-spacing:-.01em}
+
+/* ═══ الرقم بعرضٍ ثابت ═══
+   السعر يتغيّر كل ثانية. وخطٌّ متغيّر العرض يجعل «1» أضيق من «8»،
+   فيرقص العمود عند كل تحديث ويصعب تتبّع صفٍّ بالعين. */
+.num,.data-mono,td.num,th.num,.ds-table .num,
+input[type=number],time,code,kbd{
+  font-family:var(--ds-font-mono);
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+}
+.navbar{background:var(--bs-secondary-bg);border-bottom:1px solid var(--bs-border-color)}
+.card{background:var(--bs-secondary-bg);border-color:var(--bs-border-color)}
+.up{color:var(--up)!important} .down{color:var(--down)!important}
+.warn{color:var(--warn)!important} .dim{color:var(--dim)!important}
+.muted{color:var(--dim)} .num{font-variant-numeric:tabular-nums}
+
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--up);
+          display:inline-block;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ═══ الجداول ═══
+   جدولان فقط عريضان يُمرَّران أفقياً (.data-table): عرض ثابت وسطر واحد
+   لكل خلية حتى تبقى الصفوف متساوية الارتفاع فيسهل تتبّعها.
+   أمّا جداول التفصيل فتلتفّ بحرّية — فرضُ سطر واحد عليها كان يبتر
+   عمود «الخطة» إلى «هد…» ويخفي المعلومة كلها. */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;
+  border:1px solid var(--bs-border-color);border-radius:.5rem}
+.table{margin:0;--bs-table-bg:var(--bs-secondary-bg)}
+/* ‎10px‎ رأسياً بدل ‎8‎: زيادةٌ طفيفة ترفع قابلية المسح البصري
+   بلا أن تُفقد الكثافة المطلوبة في جدولٍ من عشرين عموداً. */
+.table>:not(caption)>*>*{padding:.625rem .6rem;font-size:.82rem}
+.data-table{table-layout:fixed}
+.data-table>:not(caption)>*>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.data-table thead th{background:var(--bs-tertiary-bg);cursor:pointer;user-select:none;
+  position:sticky;top:0;z-index:2;font-weight:600;color:var(--dim)}
+/* عمود الرمز مثبّت حتى لا تفقد سياق الصف أثناء التمرير الأفقي */
+.data-table thead th:first-child{inset-inline-start:0;z-index:4}
+.data-table tbody td:first-child{position:sticky;inset-inline-start:0;z-index:1;
+  background:var(--bs-secondary-bg);box-shadow:1px 0 0 var(--bs-border-color)}
+.data-table tbody tr:hover td:first-child{background:var(--bs-tertiary-bg)}
+tr.ready{background:rgba(61,220,151,.07)}
+/* الصفّ الجاهز: الأخضر شفّافاً **فوق** سطح العمود المثبّت،
+   لا لونٌ مخلوط مسبقاً — فيتبع اللوحة إن تغيّرت. */
+tr.ready td:first-child{background:
+  linear-gradient(var(--ds-success-dim),var(--ds-success-dim)),
+  var(--bs-secondary-bg)}
+.table.compact .extra{display:none}
+td[title]{cursor:help}
+
+.act{padding:.15rem .5rem;border-radius:.35rem;font-size:.75rem;font-weight:600}
+.act-now{background:rgba(61,220,151,.15);color:var(--up)}
+.act-pending{background:rgba(224,179,65,.15);color:var(--warn)}
+.act-none{color:var(--dim)}
+.reasons{color:var(--warn);font-size:.75rem}
+
+/* ═══ شريط رقائق يُمرَّر أفقياً ═══
+   btn-group يفرض صفاً واحداً لا ينكسر، فثمانِ رقائق تخرج من الشاشة على
+   الجوال بلا وسيلة للوصول إليها. الشريط هنا يُمرَّر باللمس ويبقى صفاً. */
+.chips{display:flex;gap:.3rem;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;padding-bottom:2px;max-width:100%}
+.chips::-webkit-scrollbar{display:none}
+.chips>.chip{flex:0 0 auto}
+.chip.active{background:var(--bs-tertiary-bg);border-color:var(--ds-line-strong);
+  color:var(--bs-body-color)}
+
+/* الشارت: يتقلّص على الشاشات الصغيرة بدل أن يبتلع الصفحة */
+#tv,#chart{height:clamp(260px,48vh,480px)}
+.empty{padding:2rem 1rem;text-align:center;color:var(--dim)}
+
+/* سطر بيانات الترويسة — يلتفّ ويصغُر على الجوال */
+.meta{display:flex;flex-wrap:wrap;align-items:baseline;
+      gap:.35rem .9rem;font-size:.85rem}
+.meta>*{white-space:nowrap}
+
+@media (max-width:575.98px){
+  .table>:not(caption)>*>*{padding:.4rem .45rem;font-size:.76rem}
+  h1,.h1{font-size:1.15rem} h2,.h2{font-size:1rem}
+  .navbar .btn{--bs-btn-padding-x:.5rem}
+  .card-body{padding:.85rem}
+  .meta{gap:.25rem .7rem;font-size:.8rem}
+}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<a href="#main" class="ds-skip-link">تخطَّ إلى المحتوى</a>
+
+{% include "dashboard/_rail.html" %}
+
+<nav class="navbar navbar-expand-lg sticky-top py-2">
+  <div class="container-xxl gap-2">
+    <span class="navbar-brand mb-0 fw-semibold py-0">
+      <a href="/" class="text-decoration-none" style="color:inherit">CS Edge</a>
+      <span class="live-dot" id="dot" title="حي"></span>
+    </span>
+
+    <span class="ms-auto small muted d-lg-none">
+      الشمعة <span id="countdown">—</span>
+    </span>
+
+    <span id="market-data-badge" class="small d-none d-md-inline-flex align-items-center gap-1"
+          title="البيانات تُحدّث تلقائيًا في الخلفية"
+          style="margin-inline-start:.5rem;padding:.15rem .55rem;border-radius:.4rem;
+                 border:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg)">
+      <span id="mdb-dot" style="width:8px;height:8px;border-radius:50%;background:var(--dim)"></span>
+      <span id="mdb-text">بيانات السوق…</span>
+    </span>
+
+    {# على الجوّال يفتح الشريط الجانبي؛ وعلى الحاسوب الشريط ظاهرٌ دائماً #}
+    <button class="navbar-toggler border-0 p-1 ms-2 d-lg-none" type="button"
+            id="rail-open" aria-controls="rail" aria-expanded="false"
+            aria-label="القائمة">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="navbar-collapse d-flex" id="nav">
+      <div class="d-flex flex-column flex-lg-row gap-2 w-100 align-items-lg-center
+                  mt-2 mt-lg-0">
+
+        {% comment %}
+        قائمة التنقّل انتقلت إلى الشريط الجانبي (_rail.html) ومصدرها
+        ‎context_processors.nav‎. وكانت هنا مكتوبةً بخطّ اليد، فأيّ
+        صفحة جديدة تحتاج تعديل القالب — ونسخةٌ ثانية للجوّال كانت
+        ستضاعف الخطأ.
+        {% endcomment %}
+
+        {% if show_market_chips %}
+        <div class="chips" role="group" aria-label="الأسواق">
+          {% for m in markets %}
+            <a href="?market={{ m }}{% if timeframe %}&tf={{ timeframe }}{% endif %}"
+               class="btn btn-sm btn-outline-secondary chip
+                      {% if m == market %}active{% endif %}">{{ m }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if timeframes and not tf_in_page %}
+        <div class="chips" role="group" aria-label="الفريمات">
+          {% for tf in timeframes %}
+            <a href="{% qs_set tf=tf.key %}"
+               class="btn btn-sm btn-outline-secondary chip
+                      {% if tf.key == timeframe %}active{% endif %}">{{ tf.label }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="ds-nav-status ms-lg-auto">
+          <span>الأسعار <strong id="feed-status">—</strong></span>
+          <span class="d-none d-lg-inline">الشمعة
+            <strong id="countdown-lg">—</strong></span>
+          <a href="/settings/" class="ds-nav__icon{% if nav_page == 'settings' %} is-active{% endif %}"
+             aria-label="الإعدادات" title="الإعدادات">⚙</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<main class="container-xxl py-4" id="main">{% block content %}{% endblock %}</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+
+{% comment %}
+═══ سلوك الشريط الجانبي ═══
+
+مضمَّن في الصفحة لا في ملفّ خارجي: صنفُ ‎has-rail‎ يجب أن يُوضع
+قبل أوّل رسم، وإلّا ظهرت الصفحة بلا إزاحة ثمّ قفزت — وهي القفزة
+التي تُشعر المستخدم بأن الصفحة «تتحرّك تحت يده».
+{% endcomment %}
+<script>
+(function () {
+  "use strict";
+  document.body.classList.add("has-rail");
+
+  var rail = document.getElementById("rail");
+  var scrim = document.getElementById("rail-scrim");
+  var openBtn = document.getElementById("rail-open");
+  var closeBtn = document.getElementById("rail-close");
+  if (!rail) return;
+
+  function setOpen(on) {
+    rail.classList.toggle("is-open", on);
+    if (scrim) scrim.hidden = !on;
+    if (openBtn) openBtn.setAttribute("aria-expanded", String(on));
+    /* التركيز يُنقل إلى الشريط عند فتحه ويعود عند إغلاقه: من
+       يتنقّل بلوحة المفاتيح يجد نفسه داخل ما فتحه لا خلفه. */
+    if (on) {
+      var first = rail.querySelector(".ds-rail__item");
+      if (first) first.focus();
+    } else if (openBtn) {
+      openBtn.focus();
+    }
+  }
+
+  if (openBtn) openBtn.addEventListener("click", function () { setOpen(true); });
+  if (closeBtn) closeBtn.addEventListener("click", function () { setOpen(false); });
+  if (scrim) scrim.addEventListener("click", function () { setOpen(false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && rail.classList.contains("is-open")) setOpen(false);
+  });
+  /* الانتقال إلى صفحة أخرى يُغلق الشريط: تركُه مفتوحاً على الجوّال
+     يحجب المحتوى الذي طُلب. */
+  rail.addEventListener("click", function (e) {
+    if (e.target.closest("a")) setOpen(false);
+  });
+})();
+</script>
+
+<script>
+/* رمز CSRF: لم يكن أي قالب يبعث وسم csrf_token،
+   فلم يضع Django كعكة csrftoken قط. كانت سكربتات الصفحة تقرأ الكعكة
+   فتحصل على نصّ فارغ، فيُرفض كل POST بـ 403 ويبتلع catch الخطأ بصمت —
+   وهذا سبب «زر امسح لا يفعل شيئاً». الحقل المخفيّ أوثق من الكعكة لأنه
+   يعمل أيضاً مع CSRF_USE_SESSIONS. */
+window.csrfToken = function () {
+  var f = document.querySelector("input[name=csrfmiddlewaretoken]");
+  if (f && f.value) return f.value;
+  var m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : "";
+};
+
+/* استجابة غير JSON (صفحة خطأ 403/500) كانت تُسقط .json() فيصمت catch.
+   هنا نحوّلها إلى رسالة مفهومة بدل لا شيء. */
+window.postJSON = function (url, body) {
+  return fetch(url, {
+    method: "POST",
+    body: body,
+    headers: body instanceof URLSearchParams
+      ? { "X-CSRFToken": window.csrfToken(),
+          "Content-Type": "application/x-www-form-urlencoded" }
+      : { "X-CSRFToken": window.csrfToken() }
+  }).then(function (r) {
+    return r.text().then(function (text) {
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        var why = r.status === 403 ? "رُفض الطلب (403) — أعد تحميل الصفحة"
+                : r.status === 404 ? "المسار غير موجود (404)"
+                : "استجابة غير متوقّعة (" + r.status + ")";
+        return { ok: false, reason: why };
+      }
+    });
+  });
+};
+
+/* استعلام دوري بحارس تداخل.
+
+   ‏setInterval يُطلق على الساعة لا على وصول الردّ. فإن طال الردّ عن
+   الفترة — وهو ما يحدث حين ينتظر نداءَ شبكة إلى Alpaca — تتراكم
+   الطلبات: طلب كل عشرين ثانية ولا واحد منها ينتهي. المتصفّح يحدّ
+   الاتصالات المتزامنة بستّة للمضيف الواحد، فما زاد ينتظر أو يُقطع،
+   وقطعُه هو «Broken pipe» في سجلّ الخادم.
+
+   ‏everyN تنتظر الردّ قبل جدولة التالي: أسوأ حالاتها استعلام واحد
+   جارٍ لا طابور. وتوقف الاستعلام حين تكون الصفحة مخفيّة — تبويب في
+   الخلفية لا يحتاج تحديثاً، وهذا وحده يوفّر أكثر ما يوفّره الحارس على
+   من يترك اللوحة مفتوحة. */
+window.everyN = function (ms, fn) {
+  var timer = null, stopped = false;
+  function schedule(delay) {
+    clearTimeout(timer);
+    if (!stopped) timer = setTimeout(run, delay);
+  }
+  function run() {
+    if (document.hidden) { schedule(ms); return; }
+    var res;
+    try { res = fn(); } catch (e) { schedule(ms); return; }
+    if (res && typeof res.then === "function") {
+      res.then(function () { schedule(ms); },
+               function () { schedule(ms); });
+    } else {
+      schedule(ms);
+    }
+  }
+  schedule(ms);
+  // العودة إلى التبويب تُحدّث فوراً بدل انتظار الدورة
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) schedule(250);
+  });
+  return { stop: function () { stopped = true; clearTimeout(timer); } };
+};
+
+/* اسم قصير لمواقع النداء — يُعرَّف هنا لأن هذا السكربت يُنفَّذ قبل كتلة
+   سكربتات الصفحة في آخر القالب، فكل سكربتات الصفحات تجده جاهزاً. */
+window.EVERY = window.everyN;
+
+/* العدّاد معروض مرّتين (مصغّر على الجوال، كامل على سطح المكتب) بينما كل
+   سكربتات الصفحة تكتب في #countdown وحده. المرآة تُبقيهما متطابقين بلا
+   تعديل أي سكربت — بديلها تكرار منطق العدّ في أربعة قوالب. */
+(function () {
+  var src = document.getElementById("countdown");
+  var dst = document.getElementById("countdown-lg");
+  if (!src || !dst) return;
+  new MutationObserver(function () { dst.textContent = src.textContent; })
+    .observe(src, { childList: true, characterData: true, subtree: true });
+})();
+
+/* MD-01: مؤشر حداثة بيانات السوق — مستقل عن المسح */
+(function () {
+  var badge = document.getElementById("market-data-badge");
+  var text = document.getElementById("mdb-text");
+  var dot = document.getElementById("mdb-dot");
+  if (!badge || !text) return;
+  function paint(ui) {
+    badge.style.display = "inline-flex";
+    badge.classList.remove("d-none");
+    text.textContent = ui.title || "بيانات السوق";
+    badge.title = (ui.detail || "") + " — البيانات تُحدّث تلقائيًا في الخلفية";
+    var color = ui.level === "ok" ? "var(--up)"
+              : ui.level === "warn" ? "var(--warn)"
+              : ui.level === "error" ? "var(--down)" : "var(--dim)";
+    if (dot) dot.style.background = color;
+  }
+  function refresh() {
+    var q = window.MARKET ? ("?market=" + encodeURIComponent(window.MARKET)) : "";
+    fetch("/api/market-data/sync/status/" + q)
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ui) paint(d.ui); })
+      .catch(function () {});
+  }
+  refresh();
+  setInterval(refresh, 30000);
+})();
+</script>
+{% comment %} ── المحادثة الحيّة مع المستشار — على كل الشاشات ──
+   تظهر وحدها عند بدء مراجعة، وتُطوى بنقرة على ترويستها.
+{% endcomment %}
+<div id="ai-live" class="ai-live">
+  <div class="ai-live__head" data-live-head role="button" tabindex="0"
+       aria-label="المحادثة الحيّة مع المستشار">
+    <span class="ai-live__dot" data-live-dot></span>
+    <strong class="small">المستشار</strong>
+    <span class="small muted flex-grow-1" data-live-title>لا محادثة جارية</span>
+    <span class="small muted">▲▼</span>
+  </div>
+  <div class="ai-live__body d-none" data-live-body>
+    <div class="p-2 border-bottom" data-live-stages></div>
+    <div class="ai-live__cols">
+      <div class="ai-live__col">
+        <div class="small muted px-2 pt-2">ما أُرسل</div>
+        <pre class="ai-live__pre" data-live-prompt dir="auto"></pre>
+      </div>
+      <div class="ai-live__col">
+        <div class="small muted px-2 pt-2">ما يصل</div>
+        <pre class="ai-live__pre" data-live-answer dir="auto"></pre>
+      </div>
+    </div>
+    <div class="small muted px-2 py-1 border-top" data-live-meta></div>
+  </div>
+</div>
+
+{% block scripts %}{% endblock %}
+<script src="{% asset 'dashboard/ai-live.js' %}"></script>
+</body>
+</html>

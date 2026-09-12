@@ -1,0 +1,92 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  l10n fmt %}
+{% block title %}المراقبة · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>المراقبة</h1>
+    <p>أي فرصة اقتربت من سعر دخولها؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="mon-state">—</span>
+    <button type="button" class="ds-btn" id="tg-test">اختبر تيليجرام</button>
+    <button type="button" class="ds-btn ds-btn--primary" id="check-now">افحص الآن</button>
+  </div>
+</header>
+
+{% if setup_error %}
+<div class="ds-insight ds-insight--risk" role="alert">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">المراقبة غير جاهزة</p>
+    <p class="ds-insight__text">{{ setup_error }}</p>
+  </div>
+</div>
+{% endif %}
+
+{% include "dashboard/_filterbar.html" with filters=filters timeframes=timeframes market_options=market_options date_label="تاريخ الرصد" %}
+
+{# Summary first: how close is anything to triggering, before the table #}
+<div class="ds-widget" id="w-watch-summary" data-state="loading">
+  <div class="ds-widget__skeleton ds-stat-grid">
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+  </div>
+  <div class="ds-widget__content"></div>
+</div>
+
+<div class="ds-widget" id="w-watch-table" data-state="loading">
+  <div class="ds-widget__skeleton">
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+  </div>
+  <div class="ds-widget__content"></div>
+  <div class="ds-widget__error" hidden></div>
+</div>
+
+{% if recent %}
+<section class="ds-card mt-4">
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">تحققت مؤخراً</h3>
+    <span class="ds-card__meta">بلغت سعر الدخول</span>
+  </div>
+  <div class="ds-table-scroll">
+    <table class="ds-table">
+      <thead><tr>
+        <th>الرمز</th><th class="num">سعر التحقق</th><th class="num">الدخول المخطط</th>
+        <th>وقت التحقق</th><th>التنبيه</th>
+      </tr></thead>
+      <tbody>
+      {% for w in recent %}
+        <tr>
+          <td><a href="/symbol/{{ w.market }}/{{ w.symbol }}/">{{ w.symbol }}</a></td>
+          <td class="num">{{ w.trigger_price|price }}</td>
+          <td class="num ds-text-muted">{{ w.entry|price }}</td>
+          <td class="ds-text-xs ds-text-muted">{{ w.triggered_at|date:"Y-m-d H:i" }}</td>
+          <td>{% if w.notified %}<span class="ds-badge ds-badge--success">أُرسل</span>
+              {% else %}<span class="ds-badge ds-badge--neutral">لم يُرسل</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/ai-advisor-explain.js' %}"></script>
+<script src="{% asset 'dashboard/watches-page.js' %}"></script>
+{% endblock %}

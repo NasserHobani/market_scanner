@@ -1,0 +1,524 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  l10n qs fmt %}
+{% block title %}الأداء · ماسح الأسواق{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+  <h1 class="h5 mb-0">أداء الصفقات</h1>
+
+  <div class="chips" role="group" aria-label="المصدر">
+    <a href="{% qs_set source='auto' %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if filters.source == 'auto' %}active{% endif %}">آلية</a>
+    <a href="{% qs_set source='manual' %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if filters.source == 'manual' %}active{% endif %}">يدوية</a>
+    <a href="{% qs_set source='breakout' %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if filters.source == 'breakout' %}active{% endif %}">اختراق</a>
+    <a href="{% qs_set source='all' %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if filters.source == 'all' %}active{% endif %}">الكل</a>
+  </div>
+
+  <div class="chips" role="group" aria-label="السوق">
+    <a href="{% qs_set market=None %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if not filters.market %}active{% endif %}">كل الأسواق</a>
+    {% for m in markets %}
+      <a href="{% qs_set market=m %}"
+         class="btn btn-sm btn-outline-secondary chip
+                {% if filters.market == m %}active{% endif %}">{{ m }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="chips" role="group" aria-label="حالة الصفقة">
+    {% for st in statuses %}
+      <a href="{% qs_set status=st.key %}"
+         class="btn btn-sm btn-outline-secondary chip
+                {% if filters.status == st.key %}active{% endif %}
+                {% if st.key == 'won' %}up{% elif st.key == 'lost' %}down{% endif %}"
+        >{{ st.label }}
+        <span class="muted" style="font-size:.7rem"
+              data-count="{{ st.key }}">{{ st.count }}</span></a>
+    {% endfor %}
+  </div>
+
+  <div class="chips" role="group" aria-label="الفريم">
+    <a href="{% qs_set tf=None %}"
+       class="btn btn-sm btn-outline-secondary chip
+              {% if not filters.timeframe %}active{% endif %}">كل الفريمات</a>
+    {% for tf in timeframes %}
+      <a href="{% qs_set tf=tf.key %}"
+         class="btn btn-sm btn-outline-secondary chip
+                {% if filters.timeframe == tf.key %}active{% endif %}">{{ tf.label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if setup_error %}
+  <div class="alert alert-danger py-2">{{ setup_error }}</div>
+{% endif %}
+
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3 small">
+  <span class="muted" id="settle-state">
+    {% if settlement.started %}عامل الحسم يعمل{% else %}عامل الحسم متوقّف{% endif %}
+  </span>
+  <button class="btn btn-sm btn-outline-secondary" id="settle-now">احسم الآن</button>
+  <button class="btn btn-sm btn-outline-secondary" id="repair-times"
+          title="يعيد اشتقاق أوقات الدخول والخروج من الشموع للصفقات المحسومة قبل الإصلاح"
+    >أصلح الأوقات</button>
+  <span class="muted" id="live-state"></span>
+</div>
+
+{% if filters.source == "breakout" %}
+  <div class="alert alert-warning py-2 small">
+    <strong>تنبيهات الاختراق ليست إشارة دخول مثبتة.</strong>
+    قياسها الأوّلي على بياناتنا: الحركات التالية أضخم من الأساس
+    (5–6.5×ATR مقابل 2.3) لكن التراجع المعاكس ضخم بدوره، والتوقّع كان
+    <strong>سالباً على فريم 4h</strong> في كل تركيبات الوقف والهدف،
+    وموجباً على 15m بعيّنة 25 صفقة — ضمن حدود الضجيج. هذه الصفحة
+    هي الحكم: إن بقي التوقّع سالباً بعد عيّنة كافية فالإشارة تُطفأ.
+  </div>
+{% endif %}
+
+{% if filters.status != "all" %}
+  <div class="alert alert-secondary py-2 small">
+    الجدول مرشَّح على <strong>{{ filters.status_label }}</strong>، أمّا
+    البطاقات والتقسيمات فتبقى على العيّنة الكاملة عمداً — لأن حساب نسبة
+    النجاح بعد ترشيح الرابحة وحدها يعطي 100% دائماً، وهو رقم صحيح
+    حسابياً وبلا معنى.
+  </div>
+{% endif %}
+
+{% if overall.closed %}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-lg">
+    <div class="card h-100"><div class="card-body py-2">
+      <div class="small muted">نسبة النجاح</div>
+      <div class="fs-4 fw-semibold {% if overall.win_rate >= 50 %}up{% else %}down{% endif %}"
+           id="m-winrate">{{ overall.win_rate|pct }}</div>
+      <div class="muted" style="font-size:.7rem">
+        المجال {{ overall.win_rate_low|unlocalize }}–{{ overall.win_rate_high|unlocalize }}%
+      </div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg">
+    <div class="card h-100"><div class="card-body py-2">
+      <div class="small muted">رابحة / خاسرة</div>
+      <div class="fs-4 fw-semibold">
+        <span class="up" id="m-wins">{{ overall.wins }}</span>
+        <span class="muted">/</span>
+        <span class="down" id="m-losses">{{ overall.losses }}</span>
+      </div>
+      <div class="muted" style="font-size:.7rem">من
+        <span id="m-closed">{{ overall.closed }}</span> محسومة</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg">
+    <div class="card h-100"><div class="card-body py-2">
+      <div class="small muted">التوقّع لكل صفقة</div>
+      <div class="fs-4 fw-semibold {% if overall.expectancy > 0 %}up{% else %}down{% endif %}"
+           id="m-expectancy">{{ overall.expectancy|rmult }}R</div>
+      <div class="muted" style="font-size:.7rem">
+        الحصيلة {{ overall.total_r|rmult }}R
+      </div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg">
+    <div class="card h-100"><div class="card-body py-2">
+      <div class="small muted">عامل الربح</div>
+      <div class="fs-4 fw-semibold
+        {% if overall.profit_factor and overall.profit_factor >= 1 %}up
+        {% elif overall.profit_factor %}down{% else %}dim{% endif %}"
+        >{{ overall.profit_factor|default_if_none:"—"|unlocalize }}</div>
+      <div class="muted" style="font-size:.7rem">
+        متوسط الربح {{ overall.avg_win_r|rmult }}R ·
+        الخسارة {{ overall.avg_loss_r|rmult }}R
+      </div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg">
+    <div class="card h-100"><div class="card-body py-2">
+      <div class="small muted">قيد التتبّع</div>
+      <div class="fs-4 fw-semibold"><span id="m-open">{{ overall.open }}</span>
+        <span class="muted fs-6">+<span id="m-pending">{{ overall.pending }}</span></span></div>
+      <div class="muted" style="font-size:.7rem">
+        مفتوحة + تنتظر · {{ overall.expired }} لم تُفعَّل
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{% if not overall.reliable %}
+  <div class="alert alert-warning py-2 small">
+    <strong>العيّنة {{ overall.closed }} صفقة محسومة — صغيرة.</strong>
+    مجال الثقة للنسبة هو
+    {{ overall.win_rate_low|unlocalize }}–{{ overall.win_rate_high|unlocalize }}%،
+    أي أن الرقم المعروض قد يكون بعيداً عن الحقيقة. لا تُبنَ عليه قرارات
+    قبل عشرين صفقة على الأقل، والتقسيمات أدناه أضعف منه لأن كل شريحة
+    جزء من هذه العيّنة.
+  </div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  {% for s in splits %}
+    <div class="col-lg-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h6">{{ s.title }}</h2>
+        {% if s.rows %}
+          <div class="table-wrap">
+          <table class="table table-hover table-borderless align-middle"
+                 style="table-layout:auto">
+            <thead><tr>
+              <th>{{ s.title }}</th><th>محسومة</th><th>نجاح</th>
+              <th>توقّع</th><th>حصيلة</th>
+            </tr></thead>
+            <tbody>
+              {% for r in s.rows %}
+              <tr>
+                <td class="fw-semibold">{{ r.value }}</td>
+                <td class="num dim">{{ r.closed }}</td>
+                <td class="num {% if r.win_rate >= 50 %}up{% else %}down{% endif %}">
+                  {{ r.win_rate|pct }}
+                  <span class="muted" style="font-size:.7rem"
+                    >({{ r.win_rate_low|unlocalize }}–{{ r.win_rate_high|unlocalize }})</span>
+                </td>
+                <td class="num {% if r.expectancy > 0 %}up{% else %}down{% endif %}"
+                  >{{ r.expectancy|rmult }}R</td>
+                <td class="num {% if r.total_r > 0 %}up{% else %}down{% endif %}"
+                  >{{ r.total_r|rmult }}R</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        {% else %}
+          <p class="muted small mb-0">لا شريحة بلغت ثلاث صفقات محسومة بعد.</p>
+        {% endif %}
+      </div></div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="alert alert-secondary small">
+  <strong>كيف تُقرأ هذه الأرقام.</strong>
+  الصفقة رابحة إذا لمس السعر الهدف الأول قبل الوقف، وخاسرة في العكس.
+  و<strong>R</strong> وحدة المخاطرة: ‎+2R يعني ربحاً يعادل ضعف ما كنت
+  ستخسره لو ضُرب الوقف. الحسم من الشموع لا من السعر اللحظي، وإذا لمست
+  شمعة واحدة الوقف والهدف معاً تُحتسب <strong>خسارة</strong> لأن ترتيبهما
+  داخل الشمعة مجهول — الافتراض المتحفّظ يمنع تجميل النتائج.
+  <hr class="my-2">
+  <strong>التوقّع</strong> أهمّ من نسبة النجاح: نظام يربح 40% بمكاسب
+  واسعة يتفوّق على نظام يربح 70% بمكاسب ضئيلة. ولهذا رُتّبت الشرائح
+  بالتوقّع لا بالنسبة.
+  <br>
+  <strong>سبب الدخول</strong> يُحسب لكل عامل على حدة، فالصفقة الواحدة
+  تظهر في أكثر من صف — لذلك لا تجمع أعداده إلى العدد الكلي.
+</div>
+
+{% elif not setup_error %}
+  <div class="card mb-3"><div class="card-body empty">
+    لا صفقات محسومة بعد.
+    <div class="small mt-2">
+      تُفتح الصفقات الآلية تلقائياً مع كل توصية يصدرها المسح، وتُحسم
+      عند وصول السعر للهدف أو الوقف في مسح لاحق على الفريم نفسه.
+      {% if overall.total %}
+        حالياً {{ overall.open }} مفتوحة و{{ overall.pending }} تنتظر الدخول.
+      {% endif %}
+    </div>
+  </div></div>
+{% endif %}
+
+{% if not trades and not setup_error %}
+  <div class="card"><div class="card-body empty">
+    {% if filters.status == "all" %}
+      لا صفقات بعد لهذه المرشّحات.
+    {% else %}
+      لا صفقة بحالة <strong>{{ filters.status_label }}</strong> ضمن
+      المرشّحات الحالية.
+      <div class="small mt-2">
+        <a href="{% qs_set status=None %}">اعرض كل الحالات</a>
+      </div>
+    {% endif %}
+  </div></div>
+{% endif %}
+
+{% if trades %}
+<h2 class="h6 mb-2">الصفقات
+  {% if filters.status != "all" %}
+    <span class="muted fw-normal">— {{ filters.status_label }}
+      ({{ trades|length }})</span>
+  {% endif %}
+</h2>
+<div class="table-wrap">
+<table class="table data-table table-hover table-borderless align-middle"
+       style="min-width:1360px">
+  <colgroup>
+    <col style="width:118px"><col style="width:92px"><col style="width:62px">
+    <col style="width:56px"><col style="width:50px"><col style="width:80px">
+    <col style="width:80px"><col style="width:80px"><col style="width:80px">
+    <col style="width:80px"><col style="width:104px"><col style="width:104px">
+    <col style="width:104px"><col style="width:72px"><col style="width:150px">
+  </colgroup>
+  <thead><tr>
+    <th>الرمز</th><th>الحالة</th><th>R</th><th>التصنيف</th><th>الفريم</th>
+    <th>الدخول</th><th>الوقف</th><th>الهدف</th><th>التنفيذ</th>
+    <th>الخروج</th>
+    <th>وقت الرصد</th><th>وقت الدخول</th><th>وقت الخروج</th><th>المدة</th>
+    <th>ملاحظة</th>
+  </tr></thead>
+  <tbody>
+    {% for t in trades %}
+    <tr data-trade="{{ t.id }}">
+      <td><a href="/symbol/{{ t.market }}/{{ t.symbol }}/?tf={{ t.timeframe }}"
+        >{{ t.symbol }}</a></td>
+      <td>
+        <span class="act
+          {% if t.status == 'won' %}act-now{% elif t.status == 'lost' %}act-none
+          {% elif t.status == 'open' %}act-pending{% endif %}"
+          data-cell="status">{{ t.get_status_display }}</span>
+      </td>
+      <td class="num {% if t.r_multiple > 0 %}up{% elif t.r_multiple < 0 %}down{% else %}dim{% endif %}"
+          title="{{ t.resolution_note }}" data-cell="r"
+        >{{ t.r_multiple|rmult }}</td>
+      <td>{{ t.grade }}</td>
+      <td class="dim">{{ t.timeframe }}</td>
+      <td class="num" title="{{ t.entry|unlocalize }}">{{ t.entry|price }}</td>
+      <td class="num down" title="{{ t.stop|unlocalize }}">{{ t.stop|price }}</td>
+      <td class="num up" title="{{ t.target1|unlocalize }}">{{ t.target1|price }}</td>
+      <td class="num dim" title="{{ t.entry_price|unlocalize }}">{{ t.entry_price|price }}</td>
+      <td class="num dim" title="{{ t.exit_price|unlocalize }}">{{ t.exit_price|price }}</td>
+      <td class="dim" data-cell="detected"
+          title="شمعة الإشارة {{ t.candle_time|date:'Y-m-d H:i' }} ·
+                 رُصدت في المسح {{ t.signal_at|date:'Y-m-d H:i' }}"
+        >{{ t.candle_time|date:"m-d H:i" }}</td>
+      <td class="dim" data-cell="opened"
+          title="{{ t.opened_at|date:'Y-m-d H:i' }}"
+        >{% if t.opened_at %}{{ t.opened_at|date:"m-d H:i" }}{% else %}—{% endif %}</td>
+      <td class="dim" data-cell="closed"
+          title="{{ t.closed_at|date:'Y-m-d H:i' }}"
+        >{% if t.closed_at %}{{ t.closed_at|date:"m-d H:i" }}{% else %}—{% endif %}</td>
+      <td class="dim num" data-cell="held"
+          title="{{ t.bars_held }} شمعة"
+        >{{ t.opened_at|span:t.closed_at }}</td>
+      <td class="reasons" title="{{ t.reasons }}">{{ t.reasons|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if page_obj and page_obj.paginator.num_pages > 1 %}
+<div class="d-flex align-items-center gap-2 flex-wrap py-2">
+  {% if page_obj.has_previous %}
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{% qs_set page=page_obj.previous_page_number %}">السابق</a>
+  {% else %}
+    <button class="btn btn-sm btn-outline-secondary" disabled>السابق</button>
+  {% endif %}
+  <span class="small muted">
+    {{ page_obj.start_index }}–{{ page_obj.end_index }}
+    من {{ page_obj.paginator.count }}
+    · صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
+  </span>
+  {% if page_obj.has_next %}
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{% qs_set page=page_obj.next_page_number %}">التالي</a>
+  {% else %}
+    <button class="btn btn-sm btn-outline-secondary" disabled>التالي</button>
+  {% endif %}
+
+  <span class="small muted ms-2">صفوف:</span>
+  {% for s in page_sizes %}
+    <a class="chip {% if s == page_size %}active{% endif %}"
+       href="{% qs_set size=s page=1 %}">{{ s }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="muted small mt-2">
+  الإحصاءات أعلاه محسوبة على <strong>العيّنة كاملة</strong> لا على هذه
+  الصفحة — نسبة نجاح من صفحة واحدة رقم بلا معنى.
+  عمود <strong>R</strong> للمفتوحة غير محقّق
+  ويتغيّر مع السعر؛ للمحسومة نهائي.
+  <br>
+  الأوقات معروضة بتوقيت <strong>{{ tz_name }}</strong>
+  (التخزين بـ UTC والتحويل عند العرض؛ غيّره بـ
+  <code dir="ltr">SCANNER_TIMEZONE</code> في <code dir="ltr">.env</code>).
+  <br>
+  <strong>وكلها أوقات سوق لا أوقات معالجة</strong>: «وقت الرصد»
+  هو الشمعة المغلقة التي صدرت عنها الإشارة، و«وقت الدخول» شمعة بلوغ
+  سعر التنفيذ، و«وقت الخروج» شمعة ضرب الوقف أو الهدف. لذلك تبقى
+  صحيحة مهما تأخّر الحسم — والمدة بينها حقيقية لا صفر.
+</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ payload|json_script:"page-data" }}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script>
+/* تحديث حيّ للصفقات.
+   الحسم يجري في خيط خلفي، فبلا هذا تبقى الصفحة على أرقام لحظة فتحها
+   ويظنّ المستخدم أن شيئاً لا يتحدّث — وهو يتحدّث في القاعدة فعلاً. */
+(function () {
+  var el = document.getElementById("page-data");
+  var API = el ? (JSON.parse(el.textContent).api || "/api/performance/")
+               : "/api/performance/";
+  var state = document.getElementById("live-state");
+  var settle = document.getElementById("settle-state");
+  var btn = document.getElementById("settle-now");
+
+  function paintSettlement(s) {
+    if (!settle || !s) return;
+    if (s.error) {
+      settle.textContent = "الحسم: " + s.error;
+      settle.className = "down";
+      return;
+    }
+    var when = s.seconds_ago === null || s.seconds_ago === undefined
+      ? "لم يبدأ بعد"
+      : s.seconds_ago < 60 ? "قبل " + s.seconds_ago + "ث"
+      : "قبل " + Math.round(s.seconds_ago / 60) + "د";
+    settle.textContent = (s.running ? "يحسم الآن" : "آخر حسم " + when)
+      + " · " + s.settled_total + " حُسمت منذ التشغيل";
+    settle.className = "muted";
+  }
+
+  function setText(id, value) {
+    var node = document.getElementById(id);
+    if (node && value !== null && value !== undefined) node.textContent = value;
+  }
+
+  function paintRow(t) {
+    var row = document.querySelector('tr[data-trade="' + t.id + '"]');
+    if (!row) return;
+    var st = row.querySelector('[data-cell="status"]');
+    if (st && st.textContent.trim() !== t.label) {
+      st.textContent = t.label;
+      st.className = "act " + (t.status === "won" ? "act-now"
+        : t.status === "lost" ? "act-none"
+        : t.status === "open" ? "act-pending" : "");
+      row.style.transition = "background .8s";
+      row.style.background = "rgba(106,169,255,.14)";
+      setTimeout(function () { row.style.background = ""; }, 1500);
+    }
+    /* الخادم يرسل النصّ منسَّقاً بالتوقيت المحلي. قصُّ ISO هنا كان
+       يعيد الأوقات إلى UTC ويكتب فوق ما رسمه الخادم. */
+    ["opened", "closed"].forEach(function (key) {
+      var cell = row.querySelector('[data-cell="' + key + '"]');
+      if (!cell) return;
+      cell.textContent = t[key] || "—";
+      if (t[key + "_full"]) cell.title = t[key + "_full"];
+    });
+    var hc = row.querySelector('[data-cell="held"]');
+    if (hc && t.held) hc.textContent = t.held;
+
+    var rc = row.querySelector('[data-cell="r"]');
+    if (rc) {
+      /* R للمفتوحة غير محقّق ويتغيّر مع السعر؛ للمحسومة نهائي */
+      var v = t.r !== null && t.r !== undefined ? t.r : t.unrealized;
+      /* نفس تنسيق الخادم: خانتان وإشارة صريحة. بدونه يقفز الرقم من
+         «+2.74» إلى «2.744» عند أول تحديث حيّ. */
+      rc.textContent = (v === null || v === undefined)
+        ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2);
+      rc.className = "num " + (v > 0 ? "up" : v < 0 ? "down" : "dim");
+      if (t.note) rc.title = t.note;
+    }
+  }
+
+  function refresh() {
+    fetch(API)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) {
+          if (state) { state.textContent = d.error; state.className = "down"; }
+          return;
+        }
+        var o = d.overall || {};
+        setText("m-winrate", o.win_rate === null ? "—"
+          : Number(o.win_rate).toFixed(1) + "%");
+        setText("m-wins", o.wins);
+        setText("m-losses", o.losses);
+        setText("m-closed", o.closed);
+        setText("m-expectancy", o.expectancy === null ? "—"
+          : (o.expectancy >= 0 ? "+" : "") + Number(o.expectancy).toFixed(2) + "R");
+        setText("m-open", o.open);
+        setText("m-pending", o.pending);
+        var counts = d.counts || {};
+        Object.keys(counts).forEach(function (k) {
+          var node = document.querySelector('[data-count="' + k + '"]');
+          if (node) node.textContent = counts[k];
+        });
+        (d.trades || []).forEach(paintRow);
+        paintSettlement(d.settlement);
+        if (state) {
+          state.textContent = "حُدِّث " + new Date().toLocaleTimeString("ar");
+          state.className = "muted";
+        }
+      })
+      .catch(function () {});
+  }
+
+  if (btn) {
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      var old = btn.textContent;
+      btn.textContent = "يحسم…";
+      window.postJSON("/api/settle/")
+        .then(function (d) {
+          btn.disabled = false;
+          btn.textContent = old;
+          if (state) {
+            state.textContent = d.reason || (d.ok ? "تمّ" : "تعذّر");
+            state.className = d.ok ? "up" : "down";
+          }
+          /* إعادة تحميل عند تغيّر فعلي: الشرائح والتقسيمات تُبنى في
+             الخادم فلا تتحدّث بالتحديث الجزئي */
+          if (d.ok && d.settled) setTimeout(function () { location.reload(); }, 900);
+          else refresh();
+        })
+        .catch(function (e) {
+          btn.disabled = false;
+          btn.textContent = old;
+          if (state) {
+            state.textContent = "تعذّر الاتصال: " + (e && e.message ? e.message : e);
+            state.className = "down";
+          }
+        });
+    });
+  }
+
+  var repair = document.getElementById("repair-times");
+  if (repair) {
+    repair.addEventListener("click", function () {
+      repair.disabled = true;
+      var old = repair.textContent;
+      repair.textContent = "يصلح…";
+      window.postJSON("/api/repair-times/")
+        .then(function (d) {
+          repair.disabled = false;
+          repair.textContent = old;
+          if (state) {
+            state.textContent = d.reason || (d.ok ? "تمّ" : "تعذّر");
+            state.className = d.ok ? "up" : "down";
+          }
+          if (d.ok && d.fixed) setTimeout(function () { location.reload(); }, 900);
+        })
+        .catch(function (e) {
+          repair.disabled = false;
+          repair.textContent = old;
+          if (state) {
+            state.textContent = "تعذّر الاتصال: " + (e && e.message ? e.message : e);
+            state.className = "down";
+          }
+        });
+    });
+  }
+
+  refresh();
+  setInterval(refresh, 20000);
+})();
+</script>
+{% endblock %}

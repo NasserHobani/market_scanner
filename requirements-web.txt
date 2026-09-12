@@ -1,0 +1,9 @@
+# طبقة الويب
+Django>=5.0,<6.0
+
+# لـ PostgreSQL فقط. تخطّه إن كنت ستجرّب على SQLite أولاً:
+#   pip install "psycopg[binary]>=3.1"
+#
+# ولإجراء الترحيل انظر docs/POSTGRES.md — الأمر
+#   python web/manage.py migrate_to_postgres
+# ينسخ ويتحقّق، ولا يحتاج dumpdata.

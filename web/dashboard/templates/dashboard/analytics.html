@@ -1,0 +1,79 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  %}
+
+{% block title %}التحليلات · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>التحليلات</h1>
+    <p>من أين يأتي الأداء ولماذا؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <a href="/trades/" class="ds-btn">الصفقات</a>
+    <a href="/research/" class="ds-btn">مختبر البحث</a>
+  </div>
+</header>
+
+<div class="ds-tabs" id="analytics-tabs">
+  <button type="button" class="ds-tab" data-tab="trends">اتجاه الأداء</button>
+  <button type="button" class="ds-tab" data-tab="factors">مساهمة العوامل</button>
+  <button type="button" class="ds-tab" data-tab="splits">تقسيمات الأداء</button>
+</div>
+
+<div id="analytics-panels">
+  <div class="ds-tab-panel" data-tab-panel="trends">
+    <div class="ds-widget" id="w-trends" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-stat-grid ds-stat-grid--3">
+          <div class="ds-skel ds-skel-metric"></div>
+          <div class="ds-skel ds-skel-metric"></div>
+          <div class="ds-skel ds-skel-metric"></div>
+        </div>
+        <div style="height:1rem"></div>
+        <div class="ds-skel ds-skel-chart"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+
+  <div class="ds-tab-panel" data-tab-panel="factors">
+    <div class="ds-widget" id="w-factors" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+
+  <div class="ds-tab-panel" data-tab-panel="splits">
+    <div class="ds-widget" id="w-splits" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="splits-grid">
+          <div class="ds-skel ds-skel-card"></div>
+          <div class="ds-skel ds-skel-card"></div>
+          <div class="ds-skel ds-skel-card"></div>
+          <div class="ds-skel ds-skel-card"></div>
+        </div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ payload|json_script:"page-data" }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/research-widgets.js' %}"></script>
+<script src="{% asset 'dashboard/analytics-page.js' %}"></script>
+{% endblock %}

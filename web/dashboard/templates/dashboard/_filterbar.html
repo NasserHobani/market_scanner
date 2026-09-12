@@ -1,0 +1,83 @@
+{% comment %}
+═══ شريط الترشيح — الرمز والفريم والتاريخ ═══
+
+جزءٌ واحد تستعمله شاشتا الصفقات والمراقبة. ونسختان متطابقتان
+تتباعدان بعد أوّل تعديل: يُضاف زرّ «امسح» في إحداهما ويُنسى في
+الأخرى، فيصير المرشّح يعمل هنا ولا يعمل هناك.
+
+نموذج ‏GET لا JavaScript: يعمل بلا نصوص، ويبقى المرشّح في العنوان
+فيُنسخ ويُحفظ في المفضّلة ويعود بزرّ الرجوع. والحقول المخفيّة
+تحمل بقيّة مرشّحات الصفحة كي لا يمحوها الإرسال.
+
+يُستدعى بـ include ويُمرَّر إليه:
+  filters · timeframes · market_options · date_label
+{% endcomment %}
+{% load qs %}
+<form method="get" class="ds-filterbar" role="search">
+  {% qs_hidden "symbol" "market" "tf" "from" "to" "page" %}
+
+  <label class="ds-field">
+    <span class="ds-field__label">الرمز</span>
+    <input type="search" name="symbol" value="{{ filters.symbol }}"
+           placeholder="BTC أو 2222" autocomplete="off"
+           class="ds-input" style="width:9rem">
+  </label>
+
+  {% comment %}
+  السوق قبل الفريم عمداً: هو المرشّح الأوسع، واختياره يضيّق ما
+  بعده. وترتيبٌ يبدأ بالأضيق يجعل المستخدم يعيد الاختيار.
+  {% endcomment %}
+  {% if market_options %}
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select name="market" class="ds-input" style="width:8rem">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}"
+          {% if m.key == filters.market %}selected{% endif %}>{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  {% if timeframes %}
+  <label class="ds-field">
+    <span class="ds-field__label">الفريم</span>
+    <select name="tf" class="ds-input" style="width:7rem">
+      <option value="">كل الفريمات</option>
+      {% for t in timeframes %}
+        <option value="{{ t.key }}"
+          {% if t.key == filters.timeframe %}selected{% endif %}>{{ t.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  {% comment %}
+  التسمية تُمرَّر من الصفحة: «تاريخ الإشارة» في الصفقات و«تاريخ
+  الرصد» في المراقبة. وتسميةٌ عامّة مثل «التاريخ» تترك المستخدم
+  يخمّن أيّ تاريخ يُرشَّح — وللصفقة ثلاثة.
+  {% endcomment %}
+  <label class="ds-field">
+    <span class="ds-field__label">{{ date_label|default:"من تاريخ" }}: من</span>
+    <input type="date" name="from" value="{{ filters.date_from }}"
+           class="ds-input" style="width:9.5rem">
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">إلى</span>
+    <input type="date" name="to" value="{{ filters.date_to }}"
+           class="ds-input" style="width:9.5rem">
+  </label>
+
+  <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm">طبّق</button>
+
+  {% if filters.symbol or filters.market or filters.timeframe or filters.date_from or filters.date_to %}
+    {% comment %}
+    زرّ المسح يظهر عند وجود مرشّح فقط. وظهورُه دائماً يجعل
+    المستخدم يضغطه ليتأكّد أنّ لا مرشّح — وهو تأكيدٌ لا يحتاجه.
+    {% endcomment %}
+    <a class="ds-btn ds-btn--sm"
+       href="{% qs_set symbol=None market=None tf=None from=None to=None page=None %}">امسح
+      الترشيح</a>
+  {% endif %}
+</form>

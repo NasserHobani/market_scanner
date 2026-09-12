@@ -1,0 +1,45 @@
+/* Skeleton placeholders for async dashboard widgets */
+.widget-shell { position: relative; min-height: 2rem; }
+.widget-shell .widget-content { width: 100%; }
+.widget-shell[data-state="loading"] .widget-content { visibility: hidden; }
+.widget-shell[data-state="loading"] .widget-skeleton { display: block; }
+.widget-shell[data-state="error"] .widget-error { display: block; }
+.widget-shell[data-state="ready"] .widget-skeleton { display: none; }
+.widget-shell[data-state="ready"] .widget-content { visibility: visible; }
+
+.widget-skeleton { display: none; }
+.widget-error {
+  display: none;
+  padding: .75rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .5rem;
+  color: var(--down);
+  font-size: .85rem;
+}
+
+.skel {
+  background: linear-gradient(90deg,
+    var(--bs-tertiary-bg) 25%,
+    #2a3144 50%,
+    var(--bs-tertiary-bg) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.2s ease-in-out infinite;
+  border-radius: .35rem;
+}
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skel-line { height: .85rem; margin-bottom: .5rem; }
+.skel-line.w75 { width: 75%; }
+.skel-line.w50 { width: 50%; }
+.skel-line.w33 { width: 33%; }
+.skel-card { height: 4.5rem; border-radius: .5rem; }
+.skel-chart { height: 120px; border-radius: .5rem; }
+.skel-table-row { height: 2rem; margin-bottom: .35rem; }
+
+.widget-timing {
+  font-size: .65rem;
+  color: var(--dim);
+  opacity: .7;
+}

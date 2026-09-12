@@ -1,0 +1,69 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}على وشك الانفجار · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>على وشك الانفجار</h1>
+    <p>رموزٌ انضغط مداها — واحتمال تمدّدها مقيسٌ على تاريخ السوق نفسه.</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="sq-meta">—</span>
+  </div>
+</header>
+
+{% comment %}
+الاحتمال هنا ليس تنبؤاً لرمزٍ بعينه، بل معدّلٌ تاريخي للسوق
+والفريم. وعرضُه بجانب رمز يوحي بأنّه له — فيُذكر معه معدّل الأساس
+دائماً، ويُقال إنّ الفارق هو المعلومة لا الرقم.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">الاحتمال للسوق والفريم — لا لهذا الرمز وحده</p>
+    <p class="ds-insight__text">
+      يُقاس بالمرور على تاريخ الشموع المخزّنة: كم مرّة انضغط المدى،
+      وكم مرّة تمدّد بعدها خلال الأفق. و<strong>الأساس</strong> هو
+      الاحتمال من أيّ نقطة كانت — فالفارق بينهما هو ما يضيفه
+      الانضغاط. و«التمدّد» تعريفه مكتوب: حركة تبلغ 3× مدى ATR.
+      وهو لا يقول اتجاهاً: قد يتمدّد صعوداً أو هبوطاً.
+    </p>
+  </div>
+</div>
+
+<form method="get" class="ds-filterbar" role="search">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select name="market" class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">الفريم</span>
+    <select name="tf" class="ds-input" style="width:7rem" id="f-tf">
+      <option value="">كل الفريمات</option>
+      {% for t in timeframes %}
+        <option value="{{ t.key }}">{{ t.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+          id="apply">اعرض</button>
+</form>
+
+<div id="sq-body"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/squeeze-page.js' %}"></script>
+{% endblock %}

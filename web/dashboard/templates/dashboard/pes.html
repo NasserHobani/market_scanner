@@ -1,0 +1,75 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}ما قبل الانفجار · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>ما قبل الانفجار — PES</h1>
+    <p>تجميع ← انضغاط ← تمدّد حجم ← قرب مقاومة ← اختراق ← إعادة اختبار</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="pes-btc">—</span>
+  </div>
+</header>
+
+{% comment %}
+النقاط ترتيبٌ لا احتمال. والقاعدة رقم ١٧ مطبَّقة: لا يُرقّى رمزٌ
+إلى «قبل الاختراق» إلّا إن جاءت نقاطه من ثلاث عائلات مختلفة —
+فـ EMA و Supertrend و ADX ثلاثتها «اتجاه»، واجتماعها إشارةٌ واحدة
+بثلاثة أسماء لا ثلاث إشارات.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">النقاط ترتيبٌ لا احتمال</p>
+    <p class="ds-insight__text">
+      مئة نقطة موزّعة على إحدى عشرة إشارة في ستّ عائلات. ولا تُرقّى
+      عملة إلى <strong>قبل الاختراق</strong> إلّا بنقاطٍ من ثلاث
+      عائلات فأكثر — فاجتماع مؤشّرات تقيس الشيء نفسه ليس تأكيداً.
+      ومن أراد احتمالاً مقيساً فصفحة <a href="/squeeze/">قياس
+      الانضغاط</a> تعطيه من التاريخ.
+    </p>
+  </div>
+</div>
+
+<form class="ds-filterbar" onsubmit="return false">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">المرحلة</span>
+    <select class="ds-input" style="width:10rem" id="f-state">
+      <option value="">كل المراحل (عدا: لا إشارة)</option>
+      {% for s in states %}
+        <option value="{{ s.key }}">{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">أدنى نقاط</span>
+    <input type="number" class="ds-input" style="width:6rem" id="f-score"
+           min="0" max="100" step="5" value="0">
+  </label>
+  <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+          id="apply">اعرض</button>
+</form>
+
+<div id="pes-body"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/pes-page.js' %}"></script>
+{% endblock %}

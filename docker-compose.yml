@@ -1,0 +1,157 @@
+# ═══════════════════════════════════════════════════════════════
+#  ماسح الأسواق — ثلاث خدمات
+# ═══════════════════════════════════════════════════════════════
+#
+#   محلّياً:   docker compose up -d --build
+#   ببورتينر:  Stacks → Add stack → Repository → انظر docs/PORTAINER.md
+#
+# ═══ لماذا لا ‎env_file‎ هنا ═══
+#
+# كان ``env_file: [.env]`` — وهو يعمل على جهازك ويُسقط كل نشرٍ من
+# مستودع Git. السبب أنّ ‎.env‎ محجوبٌ بـ ‎.gitignore‎ (وهو الصواب:
+# يحمل مفاتيح Alpaca وتيليجرام)، فلا يصل الخادم أصلاً. وبورتينر
+# يستنسخ المستودع ثمّ يشغّل compose، فيفشل بـ
+# ``env file not found`` قبل أن يبني شيئاً.
+#
+# والبديل ``${VAR}`` صريحاً: بورتينر يملؤه من واجهته، و‏compose
+# على جهازك يملؤه من ‎.env‎ **تلقائياً** (هذا سلوكه الافتراضي، ولا
+# يحتاج ``env_file``). فملفٌّ واحد يخدم الاثنين.
+#
+# وفيه فائدةٌ ثانية: ما يصل الحاوية مذكورٌ هنا بالاسم. أمّا
+# ``env_file`` فيصبّ الملفّ كلّه في بيئة كل خدمة — بما فيه ما لا
+# يلزمها.
+
+services:
+
+  # ── القاعدة ──
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scanner}
+      POSTGRES_USER: ${POSTGRES_USER:-scanner}
+      # ‏:? يوقف النشر برسالةٍ واضحة بدل قاعدةٍ بلا كلمة مرور
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      # ترتيبٌ غير UTF-8 يجعل فرز الأسماء العربية عشوائياً، ولا
+      # يُغيَّر بعد الإنشاء إلّا بإعادة بناء القاعدة كلّها
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # لا ‎ports‎ عمداً: القاعدة تُرى من شبكة المكدّس وحدها. ونشرها
+    # على المضيف يفتح 5432 للإنترنت — وهو أكثر ما يُمسح آلياً.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scanner} -d ${POSTGRES_DB:-scanner}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── الويب ──
+  web:
+    build: .
+    image: market-scanner:latest
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      # ── ما يحدّده المستخدم ──
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?ولّده مرّة واحفظه}
+      POSTGRES_DB: ${POSTGRES_DB:-scanner}
+      POSTGRES_USER: ${POSTGRES_USER:-scanner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
+      AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
+
+      # ── المفاتيح: فارغةٌ افتراضاً، والسوق بلا مفتاح يُترك ──
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      # ── ثوابت هذه الخدمة ──
+      #
+      # ‏ready() يعمل في كل عامل gunicorn. وثلاثة عمّال بلا هذا
+      # يعني ثلاثة محرّكات على قاعدةٍ واحدة: كل مسحٍ ثلاث مرّات،
+      # وكل صفقةٍ ورقية ثلاثاً.
+      SCHEDULER_ENGINE: "off"
+      AUTO_SCAN: "0"
+      DJANGO_DEBUG: "0"
+      RUN_MIGRATIONS: "1"
+      COLLECT_STATIC: "1"
+      SEED_JOBS: ${SEED_JOBS:-1}
+    ports:
+      # ═══ الربط مغلقٌ افتراضاً — اقرأ قبل تغييره ═══
+      #
+      # لا تسجيل دخول في هذا النظام. ولا صفحة واحدة تسأل عن هويّة.
+      # فمن يعرف العنوان يقرأ صفقاتك، ويغيّر حدود المخاطرة، ويشغّل
+      # المسح — أي يستهلك مفاتيحك عند Alpaca و Claude.
+      #
+      # و‏WEB_BIND افتراضه ‎127.0.0.1‎: الخدمة تعمل ولا تُرى من
+      # خارج الخادم. وفتحُها يحتاج كتابةً صريحة — لأنّ القرار
+      # يجب أن يكون واعياً لا نتيجةَ نسخ أمرٍ من دليل.
+      #
+      # للوصول من جهازك:  ssh -L 8000:127.0.0.1:8000 user@server
+      # أو ضع وكيلاً عكسياً بكلمة مرور. انظر docs/PORTAINER.md.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8000}:8000"
+    volumes:
+      # الشموع ولقطات الميزات — لا تدخل الصورة، وتبقى بعد كل بناء
+      - appdata:/app/data
+      - reports:/app/reports
+    logging: &logs
+      driver: json-file
+      # بلا حدٍّ يملأ السجلّ القرص خلال أسابيع — والقرص الممتلئ
+      # يوقف القاعدة، فيبدو العطب فيها لا في السجلّ
+      options: {max-size: "20m", max-file: "5"}
+
+  # ── المجدول ──
+  scheduler:
+    build: .
+    image: market-scanner:latest
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?ولّده مرّة واحفظه}
+      POSTGRES_DB: ${POSTGRES_DB:-scanner}
+      POSTGRES_USER: ${POSTGRES_USER:-scanner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
+      AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
+
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      SCHEDULER_ENGINE: "off"     # الحلقة في السكربت لا في Django
+      AUTO_SCAN: "0"
+      DJANGO_DEBUG: "0"
+      RUN_MIGRATIONS: "0"         # الويب يهاجر؛ هذا ينتظر
+      COLLECT_STATIC: "0"
+      SEED_JOBS: "0"
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-60}
+    command: ["/app/docker-scheduler.sh"]
+    # ═══ نسخة واحدة لا غير ═══
+    #
+    # ‏--scale scheduler=2 يشغّل كل مهمّة مرّتين. ولا يمنعه Docker،
+    # فالمنع هنا مكتوبٌ لا مضمون.
+    scale: 1
+    volumes:
+      - appdata:/app/data
+      - reports:/app/reports
+    logging: *logs
+
+volumes:
+  pgdata:
+  appdata:
+  reports:

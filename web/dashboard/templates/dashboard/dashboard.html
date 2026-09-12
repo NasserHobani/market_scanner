@@ -1,0 +1,114 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  %}
+
+{% block title %}لوحة التشغيل · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header ops-page-header">
+  <div class="ds-page-header__text">
+    <h1>لوحة التشغيل</h1>
+    <p>هل يمكنني الوثوق بالنظام الآن؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="ops-updated"></span>
+    <a href="/scanner/" class="ds-btn ds-btn--primary">افتح الماسح</a>
+    <a href="/trades/" class="ds-btn">الصفقات</a>
+  </div>
+</header>
+
+<div class="ops-grid">
+
+  {# ── Row 1: system trust — the single biggest element on the page ── #}
+  <section class="ops-grid__trust" aria-label="ثقة النظام">
+    <div class="ds-widget" id="w-health" data-state="loading">
+      <div class="ds-widget__skeleton ops-trust-row">
+        <div class="ds-skel ds-skel-metric tall"></div>
+        <div class="ds-stat-grid ds-stat-grid--4">
+          <div class="ds-skel ds-skel-metric"></div>
+          <div class="ds-skel ds-skel-metric"></div>
+          <div class="ds-skel ds-skel-metric"></div>
+          <div class="ds-skel ds-skel-metric"></div>
+        </div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+  {# ── Row 2: what the numbers mean, in one sentence ── #}
+  <section class="ops-grid__insight" aria-label="قراءة الحالة">
+    <div class="ds-widget" id="w-insight" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-row" style="height:3.2rem"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+  {# ── Row 3: three independent status readouts ── #}
+  <section class="ops-grid__status" aria-label="حالة الأنظمة">
+    <div class="ds-widget" id="w-opportunities" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-metric"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+    <div class="ds-widget" id="w-ai" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-metric"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+    <div class="ds-widget" id="w-optimization" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-metric"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+  {# ── Row 4: recent performance beside recent alerts ── #}
+  <section class="ops-grid__equity ds-card" aria-label="الأداء الأخير">
+    <div class="ds-widget" id="w-equity" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-chart"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+  <section class="ops-grid__alerts ds-card" aria-label="التنبيهات">
+    <div class="ds-widget" id="w-alerts" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-text w60"></div>
+        <div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+  {# ── Row 5: what is live right now ── #}
+  <section class="ops-grid__trades ds-card" aria-label="الصفقات المفتوحة">
+    <div class="ds-widget" id="w-open-trades" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-text w40"></div>
+        <div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ payload|json_script:"page-data" }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/dashboard-page.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  %}
+
+{% block title %}تحسين الاستراتيجية · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>تحسين الاستراتيجية</h1>
+    <p>أي مجموعة معاملات تعطي أفضل توقّع؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <a href="/analytics/" class="ds-btn">التحليلات</a>
+    <a href="/research/" class="ds-btn">مختبر البحث</a>
+  </div>
+</header>
+
+<div class="ds-widget" id="w-opt-summary" data-state="loading" style="margin-bottom:var(--ds-sp-4)">
+  <div class="ds-widget__skeleton ds-stat-grid ds-stat-grid--4">
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+    <div class="ds-skel ds-skel-metric"></div>
+  </div>
+  <div class="ds-widget__error"></div>
+  <div class="ds-widget__content"></div>
+</div>
+
+<div class="ds-tabs" id="opt-tabs">
+  <button type="button" class="ds-tab" data-tab="leaderboard">لوحة المتصدرين</button>
+  <button type="button" class="ds-tab" data-tab="accepted">المقبولة</button>
+  <button type="button" class="ds-tab" data-tab="rejected">المرفوضة</button>
+  <button type="button" class="ds-tab" data-tab="walkforward">Walk-Forward</button>
+  <button type="button" class="ds-tab" data-tab="history">السجل</button>
+</div>
+
+<div id="opt-panels">
+  <div class="ds-tab-panel" data-tab-panel="leaderboard">
+    <div class="ds-widget" id="w-leaderboard" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+  <div class="ds-tab-panel" data-tab-panel="accepted">
+    <div class="ds-widget" id="w-accepted" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+  <div class="ds-tab-panel" data-tab-panel="rejected">
+    <div class="ds-widget" id="w-rejected" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+  <div class="ds-tab-panel" data-tab-panel="walkforward">
+    <div class="ds-widget" id="w-walkforward" data-state="loading">
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+  <div class="ds-tab-panel" data-tab-panel="history">
+    <div class="ds-widget" id="w-history" data-state="loading">
+      <div class="ds-widget__skeleton">
+        <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+      </div>
+      <div class="ds-widget__error"></div>
+      <div class="ds-widget__content"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/optimization-page.js' %}"></script>
+{% endblock %}

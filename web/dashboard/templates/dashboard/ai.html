@@ -1,0 +1,315 @@
+{% extends "dashboard/base.html" %}
+
+{% load static assets  %}
+
+
+
+{% block title %}مركز الذكاء · CS Edge{% endblock %}
+
+
+
+{% block head %}
+
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+
+{% endblock %}
+
+
+
+{% block content %}
+
+<header class="ds-page-header">
+
+  <div class="ds-page-header__text">
+
+    <h1>مركز الذكاء الاصطناعي</h1>
+
+    <p>لماذا يوصي النظام بما يوصي به؟ — كل مراجعة Claude قابلة للتفتيش</p>
+
+  </div>
+
+  <div class="ds-page-header__actions">
+
+    <a href="/analytics/" class="ds-btn">التحليلات</a>
+
+    <a href="/optimization/" class="ds-btn">التحسين</a>
+
+  </div>
+
+</header>
+
+
+
+<div class="ds-widget" id="w-verdict" data-state="loading" style="margin-bottom:var(--ds-sp-4)">
+
+  <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-metric tall"></div></div>
+
+  <div class="ds-widget__error"></div>
+
+  <div class="ds-widget__content"></div>
+
+</div>
+
+
+
+<div class="ds-tabs" id="ai-tabs">
+
+  <button type="button" class="ds-tab" data-tab="overview">نظرة عامة</button>
+
+  <button type="button" class="ds-tab" data-tab="live">مراجعات مباشرة</button>
+
+  <button type="button" class="ds-tab" data-tab="verdicts">الأحكام</button>
+
+  <button type="button" class="ds-tab" data-tab="history">سجل المراجعات (قديم)</button>
+
+  <button type="button" class="ds-tab" data-tab="learning">التعلّم</button>
+
+  <button type="button" class="ds-tab" data-tab="evaluation">التقييم</button>
+
+  <button type="button" class="ds-tab" data-tab="providers">إحصاءات المزوّد</button>
+
+  <button type="button" class="ds-tab" data-tab="models">النماذج</button>
+
+  <button type="button" class="ds-tab" data-tab="prediction">التنبؤ</button>
+
+  <button type="button" class="ds-tab" data-tab="fusion">دمج القرار</button>
+
+  <button type="button" class="ds-tab" data-tab="decision">قرار الذكاء</button>
+
+  <button type="button" class="ds-tab" data-tab="features">جودة الميزات</button>
+
+</div>
+
+
+
+<div id="ai-panels">
+
+  <div class="ds-tab-panel" data-tab-panel="overview">
+
+    <div class="ai-grid">
+
+      <div class="ds-widget" id="w-advisor-runtime" data-state="loading">
+
+        <div class="ds-widget__skeleton ds-card"><div class="ds-skel ds-skel-row"></div></div>
+
+        <div class="ds-widget__error"></div>
+
+        <div class="ds-widget__content"></div>
+
+      </div>
+
+      <div class="ds-widget" id="w-foundations" data-state="loading">
+
+        <div class="ds-widget__skeleton ds-card">
+
+          <div class="ds-skel ds-skel-text w40"></div>
+
+          <div class="ds-skel ds-skel-row"></div><div class="ds-skel ds-skel-row"></div>
+
+        </div>
+
+        <div class="ds-widget__error"></div>
+
+        <div class="ds-widget__content"></div>
+
+      </div>
+
+      <div class="ds-widget" id="w-modules" data-state="loading">
+
+        <div class="ds-widget__skeleton ds-card"><div class="ds-skel ds-skel-row"></div></div>
+
+        <div class="ds-widget__error"></div>
+
+        <div class="ds-widget__content"></div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="live">
+
+    <div class="ds-widget" id="w-live-review" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="verdicts">
+
+    <div class="ds-widget" id="w-verdicts" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="history">
+
+    <div class="ds-widget" id="w-review-history" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="learning">
+
+    <div class="ds-widget" id="w-learning" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="evaluation">
+
+    <div class="ds-widget" id="w-evaluation" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="providers">
+
+    <div class="ds-widget" id="w-providers" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="models">
+
+    <div class="ds-widget" id="w-models" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+    <div class="ds-widget" id="w-compare" data-state="loading" style="margin-top:var(--ds-sp-4)">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="prediction">
+
+    <div class="ds-widget" id="w-prediction" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="fusion">
+
+    <div class="ds-widget" id="w-fusion" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="decision">
+
+    <div class="ds-widget" id="w-decision" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="ds-tab-panel" data-tab-panel="features">
+
+    <div class="ds-widget" id="w-features" data-state="loading">
+
+      <div class="ds-widget__skeleton"><div class="ds-skel ds-skel-card"></div></div>
+
+      <div class="ds-widget__content"></div>
+
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block scripts %}
+
+{{ payload|json_script:"page-data" }}
+
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+
+<script src="{% asset 'dashboard/ai-advisor-explain.js' %}"></script>
+
+<script src="{% asset 'dashboard/advice.js' %}"></script>
+
+<script src="{% asset 'dashboard/verdicts-page.js' %}"></script>
+
+<script src="{% asset 'dashboard/ai-page.js' %}"></script>
+
+{% endblock %}
+
+

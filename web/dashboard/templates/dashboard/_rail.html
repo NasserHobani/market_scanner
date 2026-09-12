@@ -1,0 +1,49 @@
+{% comment %}
+═══ الشريط الجانبي ═══
+
+مصدرٌ واحد للتنقّل يُرسَم مرّة. النسخة السابقة كانت تكرّر الروابط
+لسطح المكتب والجوّال، فيُضاف رابطٌ في أحدهما ويُنسى في الآخر.
+
+والأيقونات SVG داخل الصفحة لا خطّ أيقونات: خطّ الأيقونات إن لم
+يُحمَّل يعرض **اسم الأيقونة نصّاً** — «dashboard» و«swap_horiz» —
+فتتحوّل القائمة إلى رطانة إنجليزية في واجهة عربية. والرسم المضمَّن
+لا شبكة له فلا يفشل.
+{% endcomment %}
+{% load qs %}
+<aside class="ds-rail" id="rail" aria-label="التنقل الرئيسي">
+  <div class="ds-rail__head">
+    <a href="/" class="ds-rail__brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="ds-rail__mark">
+        <path d="M4 17l5-6 4 4 6-8"/><path d="M4 21h16"/>
+      </svg>
+      <span class="ds-rail__name">CS Edge</span>
+    </a>
+    <button type="button" class="ds-rail__close" id="rail-close"
+            aria-label="إغلاق القائمة">×</button>
+  </div>
+
+  <nav class="ds-rail__nav">
+    {% for item in nav_items %}
+      <a href="{{ item.href }}"
+         class="ds-rail__item{% if item.key == nav_page %} is-active{% endif %}"
+         {% if item.key == nav_page %}aria-current="page"{% endif %}
+         title="{{ item.label }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">{{ item.icon|safe }}</svg>
+        <span class="ds-rail__label">{{ item.label }}</span>
+      </a>
+      {% if item.gap %}<span class="ds-rail__gap" aria-hidden="true"></span>{% endif %}
+    {% endfor %}
+  </nav>
+
+  <div class="ds-rail__foot">
+    <a href="/settings/" class="ds-rail__item{% if nav_page == 'settings' %} is-active{% endif %}"
+       title="الإعدادات">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>
+      </svg>
+      <span class="ds-rail__label">الإعدادات</span>
+    </a>
+  </div>
+</aside>
+<div class="ds-rail__scrim" id="rail-scrim" hidden></div>

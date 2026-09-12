@@ -1,0 +1,69 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}المهامّ المجدولة · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>المهامّ المجدولة</h1>
+    <p>ما الذي يعمل في الخلفية، ومتى عمل آخر مرّة؟</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <span class="ds-text-xs ds-text-muted" id="engine-state">—</span>
+    <button type="button" class="ds-btn" id="seed">أنشئ الناقصة</button>
+    <button type="button" class="ds-btn ds-btn--primary" id="refresh">حدّث</button>
+  </div>
+</header>
+
+{% comment %}
+═══ التنبيه الذي لا يجوز إخفاؤه ═══
+
+المهامّ تعمل داخل الخادم. فإغلاق نافذة الطرفية يوقفها كلّها — ولا
+شيء في الشاشة يدلّ على ذلك، لأنّ الشاشة نفسها لا تُفتح حينها.
+
+ومن ظنّ أنّها تعمل وهي متوقّفة يبني على بياناتٍ قديمة. فالتنبيه
+ثابت لا يُغلَق، ومعه الطريق إلى التشغيل الخارجي.
+{% endcomment %}
+<div class="ds-insight ds-insight--warn" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">هذه المهامّ تعمل ما دام الخادم يعمل</p>
+    <p class="ds-insight__text">
+      إغلاق نافذة الخادم يوقفها جميعاً. ولتشغيلها والخادم مغلق،
+      اربط الأمر <code>python web/manage.py run_jobs</code> بـ
+      Task Scheduler في ويندوز — التفاصيل في
+      <code>docs/SCHEDULER.md</code>.
+    </p>
+  </div>
+</div>
+
+<div class="ds-widget" id="w-jobs" data-state="loading">
+  <div class="ds-widget__skeleton">
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+    <div class="ds-skel ds-skel-row"></div>
+  </div>
+  <div class="ds-widget__content"></div>
+  <div class="ds-widget__error" hidden></div>
+</div>
+
+{# سجلّ التشغيل — يُملأ عند اختيار مهمّة #}
+<section class="ds-card mt-4" id="runs-card" hidden>
+  <div class="ds-card__head">
+    <h3 class="ds-card__title" id="runs-title">سجلّ التشغيل</h3>
+    <button type="button" class="ds-btn ds-btn--sm" id="runs-close">إغلاق</button>
+  </div>
+  <div class="ds-table-scroll" id="runs-body"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/jobs-page.js' %}"></script>
+{% endblock %}

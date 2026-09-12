@@ -1,0 +1,28 @@
+# أسرار — لا تُرفع أبداً
+#
+# ‏.env.bak* و‎.env.*‎ ليسا زيادة: نسخةٌ احتياطية من ‎.env‎ تحمل
+# المفاتيح نفسها، و‎.env‎ وحدها لا تُطابقها. والاستثناء الوحيد
+# ‎.env.example‎ — وهو قالب بلا قيم ويجب أن يُرفع.
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.key
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# بيانات ومخرجات
+data/
+reports/
+staticfiles/
+*.sqlite3
+
+.pytest_cache/
+.idea/
+.vscode/
+data/verdicts.jsonl
+data/squeeze/
+data/pes/

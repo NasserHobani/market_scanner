@@ -1,0 +1,80 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}سجلّ الرصد · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>سجلّ الرصد — هل ‏PES تعمل؟</h1>
+    <p>ما رُصد، ومتى، وماذا جرى بعده خلال {{ horizon_days }} يوماً</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <button type="button" class="ds-btn ds-btn--sm" id="refresh">
+      حدّث المسارات
+    </button>
+  </div>
+</header>
+
+{% comment %}
+  ═══ لماذا العتبة مرشِّح لا ثابت ═══
+
+  «انفجرت» كلمةٌ بلا معنى حتى تُحدَّد عتبتها. ونسبةُ نجاحٍ برقمٍ
+  واحد تُصدَّق أو تُهمَل ولا تُناقَش — أمّا رؤيتها وهي تنهار من
+  ‎70٪‎ عند ‎3٪‎ إلى ‎12٪‎ عند ‎15٪‎ فتقول عن الاستراتيجية ما لا
+  يقوله أيّ رقمٍ مفرد.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">العتبة تختارها أنت</p>
+    <p class="ds-insight__text">
+      لا يُخزَّن حكم «نجح» أو «فشل» — بل <strong>المسار</strong>:
+      أقصى ارتفاع ومتى بلغه، وأقصى تراجع قبله، وهل عُبِرت المقاومة.
+      فحرّك العتبة وانظر كيف تتغيّر النسبة. وانهيارُها السريع يعني
+      أنّ ما يُلتقط حركاتٌ صغيرة لا انفجارات.
+    </p>
+  </div>
+</div>
+
+<form class="ds-filterbar" onsubmit="return false">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">الحالة عند الرصد</span>
+    <select class="ds-input" style="width:12rem" id="f-state">
+      <option value="">كل الحالات</option>
+      {% for s in states %}
+        <option value="{{ s.key }}">{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">عتبة الانفجار ٪</span>
+    <input type="number" class="ds-input" style="width:6rem" id="f-threshold"
+           min="1" max="200" step="1" value="{{ default_threshold }}">
+  </label>
+  <div class="chips" id="preset-chips" role="group" aria-label="عتبات جاهزة">
+    {% for t in presets %}
+      <button type="button" class="btn btn-sm btn-outline-secondary chip"
+              data-threshold="{{ t }}">{{ t }}٪</button>
+    {% endfor %}
+  </div>
+</form>
+
+<div id="history-body"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/pes-history-page.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,190 @@
+{% extends "dashboard/base.html" %}
+{% load static l10n fmt assets %}
+{% block title %}البتكوين · ماسح الأسواق{% endblock %}
+
+{% block content %}
+
+{% if error %}
+  <div class="alert alert-danger small mb-3">تعذّر بناء التقرير: {{ error }}</div>
+{% endif %}
+
+{# ── الحالة عبر الفريمات ── #}
+<div class="row g-2 mb-3">
+  {% for tf, s in states.items %}
+  <div class="col-6 col-md-3">
+    <div class="card"><div class="card-body py-2">
+      <div class="small muted">{{ tf }}</div>
+      <div class="fs-5 fw-semibold" dir="ltr">{{ s.close|price }}</div>
+      <div class="small {% if s.change_pct > 0 %}up{% elif s.change_pct < 0 %}down{% else %}dim{% endif %}">
+        {{ s.change_pct|rmult }}%
+      </div>
+      <div class="small {% if s.trend_value == 1 %}up{% elif s.trend_value == -1 %}down{% else %}dim{% endif %}">
+        {{ s.trend }}
+      </div>
+    </div></div>
+  </div>
+  {% empty %}
+  <div class="col-12"><div class="card"><div class="card-body empty">
+    لا شموع محفوظة للبتكوين. شغّل المسح أولاً.
+  </div></div></div>
+  {% endfor %}
+</div>
+
+{# ── الشارت الحيّ ── #}
+<div class="card mb-3"><div class="card-body">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <strong class="me-2">BTCUSDT</strong>
+    <div class="btn-group btn-group-sm" role="group" aria-label="الفريم">
+      {% for tf in chart_timeframes %}
+        <button type="button" class="btn btn-outline-secondary btn-tf{% if tf == chart_tf %} active{% endif %}"
+                data-tf="{{ tf }}">{{ tf }}</button>
+      {% endfor %}
+    </div>
+    <span class="small" id="chart-price" dir="ltr"></span>
+    <span class="small" id="chart-feed"></span>
+    <span class="small muted ms-auto" id="chart-note"></span>
+  </div>
+
+  <div class="muted small mb-2" id="chart-legend"></div>
+
+  {# شارت TradingView — إطار معزول، فطبقات التحليل تُعرض تحته أرقاماً #}
+  <div id="tv-chart" style="height:520px"></div>
+  <div id="tv-fallback" class="d-none">
+    <div id="chart" style="height:420px"></div>
+    <div class="small muted mt-1" data-chart-mode></div>
+  </div>
+
+  {# القراءة الفنّية لنفس الفريم المعروض — الشارت والتحليل لا يفترقان #}
+  <div class="row g-2 mt-3 small" id="chart-analysis"></div>
+
+  {# ما لا يُرسم داخل الإطار المعزول يُعطى رقماً قابلاً للنسخ #}
+  <div class="mt-3">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <strong class="small">مستويات التحليل</strong>
+      <span class="small muted">
+        تُعرض أرقاماً لأن ويدجت TradingView إطار معزول لا يقبل الرسم
+        عليه — انسخ المستوى وأضفه بخطّ أفقي.
+      </span>
+    </div>
+    <div id="levels-box" class="row g-1 small"></div>
+  </div>
+</div></div>
+
+{% if consensus %}
+<div class="alert {% if consensus.aligned %}alert-secondary{% else %}alert-warning{% endif %} py-2 small mb-3">
+  <strong>توافق الفريمات:</strong> {{ consensus.text }}
+  {% if not consensus.aligned %}
+    — الفريمات غير متفقة، فقراءة الاتجاه أضعف مما تبدو.
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── توقّع الاتجاه، مقروناً بحكم على صلاحيته ── #}
+<h2 class="h6 mt-4 mb-2">توقّع الاتجاه</h2>
+
+{% for tf, m in models.items %}
+<div class="card mb-2"><div class="card-body py-3">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <strong>{{ tf }}</strong>
+    {% if m.valid %}
+      <span class="small muted">{{ m.model }}</span>
+      {% if m.usable %}
+        <span class="badge text-bg-success">يتفوّق على خطّ الأساس</span>
+      {% else %}
+        <span class="badge text-bg-secondary">لا يتفوّق — لا يُستعمل</span>
+      {% endif %}
+    {% else %}
+      <span class="badge text-bg-secondary">غير مقيَّم</span>
+    {% endif %}
+  </div>
+
+  {% if m.valid %}
+    <div class="row g-2 small">
+      <div class="col-6 col-md-3">
+        <div class="muted">دقّة النموذج</div>
+        <div class="fs-6">{{ m.accuracy|floatformat:1 }}%
+          <span class="muted">({{ m.ci_low|floatformat:1 }}–{{ m.ci_high|floatformat:1 }})</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="muted">أفضل خطّ أساس</div>
+        <div class="fs-6">{{ m.best_baseline_value|floatformat:1 }}%
+          <span class="muted">({{ m.best_baseline }})</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="muted">الفارق</div>
+        <div class="fs-6 {% if m.edge_points > 0 %}up{% else %}down{% endif %}">
+          {{ m.edge_points|rmult }} نقطة
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="muted">عيّنة الاختبار</div>
+        <div class="fs-6">{{ m.n_test }} · {{ m.folds }} نافذة</div>
+      </div>
+    </div>
+
+    {% if m.now %}
+      <hr class="my-2">
+      <div class="d-flex gap-3 align-items-baseline flex-wrap">
+        <span class="small muted">احتمال صعود الشمعة القادمة:</span>
+        <span class="fs-5 {% if m.now.prob_up > 50 %}up{% else %}down{% endif %}">
+          {{ m.now.prob_up|floatformat:1 }}%
+        </span>
+        <span class="small muted">مدرَّب على {{ m.now.trained_on }} شمعة</span>
+      </div>
+    {% elif m.valid and not m.usable %}
+      <div class="small muted mt-2">
+        لا يُعرض احتمال: النموذج لم يتجاوز خطّ الأساس، وعرض رقم منه
+        يوهم بمعرفة لا يملكها.
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="small muted">{{ m.reason }}</div>
+  {% endif %}
+</div></div>
+{% endfor %}
+
+<div class="alert alert-warning small">
+  <strong>اقرأ هذا قبل أي قرار.</strong>
+  دقّة 53% في الاتجاه <em>لا تعني ربحاً</em>. الربح يحتاج أن يتجاوز
+  متوسط الحركة الصحيحة كلفةَ التنفيذ ومتوسط الحركة الخاطئة معاً — وهو
+  شرط أقسى بكثير من تجاوز 50%.
+  <br>
+  وقياس منفصل على {{ 243 }} صفقة أعطى ارتباطاً <strong>+0.04</strong> بين
+  حالة البتكوين قبل الإشارة ونتيجة الصفقة — أي أن حالته لم تفسّر
+  خسائرك حتى الآن.
+</div>
+
+{# ── رأي النموذج المحلي ── #}
+<h2 class="h6 mt-4 mb-2">رأي المستشار</h2>
+<div class="card"><div class="card-body py-3">
+  {% if opinion %}
+    <div class="d-flex gap-3 flex-wrap small mb-2">
+      <span>الحكم: <strong>{{ opinion.agreement|default:"—" }}</strong></span>
+      <span class="muted">الثقة {{ opinion.confidence|default:"—" }}</span>
+      <span class="muted">التأسيس {{ opinion.grounding_score|default:"—" }}%</span>
+      <span class="muted">{{ opinion.model|default:"" }}</span>
+    </div>
+    <div class="small muted">آخر مراجعة: {{ opinion.timestamp|default:"—" }}</div>
+  {% else %}
+    <div class="small muted">لا رأي مسجَّل عن البتكوين بعد.</div>
+  {% endif %}
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-sm btn-outline-secondary" id="btc-opinion">
+      اطلب رأياً جديداً
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" id="btc-refresh">
+      أعد حساب النماذج
+    </button>
+    <span class="small muted align-self-center" id="btc-state"></span>
+  </div>
+</div></div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script src="{% asset 'dashboard/chart-fallback.js' %}"></script>
+<script src="{% asset 'dashboard/chart.js' %}"></script>
+<script src="{% asset 'dashboard/livefeed.js' %}"></script>
+{{ chart_config|json_script:"btc-config" }}
+<script src="{% asset 'dashboard/btc-page.js' %}"></script>
+{% endblock %}

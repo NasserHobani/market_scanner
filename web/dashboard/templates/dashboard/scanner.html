@@ -1,0 +1,420 @@
+{% extends "dashboard/base.html" %}
+{% load static assets  l10n %}
+
+{% block title %}الماسح · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/widgets.css' %}">
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>الماسح</h1>
+    <p>ما الفرص المتاحة الآن على {{ market }} · {{ tf_label }}؟</p>
+  </div>
+  <div class="ds-page-header__actions chips" role="group" aria-label="الفريم">
+    {% for tf in timeframes %}
+      <a href="?market={{ market }}&tf={{ tf.key }}"
+         class="btn btn-sm btn-outline-secondary chip{% if tf.key == timeframe %} active{% endif %}">{{ tf.label }}</a>
+    {% endfor %}
+  </div>
+</header>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <form action="/search/" method="get" class="d-flex gap-1 flex-grow-1 flex-md-grow-0">
+    <select name="m" class="form-select form-select-sm flex-grow-0"
+            style="width:auto" aria-label="نطاق البحث">
+      {% for sc in scopes %}
+        <option value="{{ sc.key }}"
+          {% if sc.key == scope %}selected{% endif %}>{{ sc.label }}</option>
+      {% endfor %}
+    </select>
+    <input class="form-control form-control-sm" type="search" name="q"
+           placeholder="ابحث برمز أو اسم…" style="min-width:130px;max-width:220px">
+  </form>
+
+  <div class="chips" role="group" aria-label="تصفية">
+    <button class="btn btn-sm btn-outline-secondary chip active" data-f="all">الكل</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-f="reco">فيها توصية</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-f="now">شراء الآن</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-f="pending">شراء لاحقاً</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-f="ready">مكتمل الشروط</button>
+  </div>
+
+  <div class="chips" role="group" aria-label="الفرز الشرعي">
+    <button class="btn btn-sm btn-outline-secondary chip active" data-c="all">الكل</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-c="ok">متوافق</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-c="review">يحتاج مراجعة</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-c="hide-bad">إخفاء غير المتوافق</button>
+  </div>
+
+  <div class="chips" role="group" aria-label="السيولة">
+    <button class="btn btn-sm btn-outline-secondary chip active" data-l="all">كل السيولات</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-l="high">عالية</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-l="mid">متوسطة+</button>
+    <button class="btn btn-sm btn-outline-secondary chip" data-l="no-micro">بلا الدقيقة</button>
+  </div>
+
+  <button class="btn btn-sm btn-outline-secondary" id="cols-toggle">كل الأعمدة</button>
+  <span class="small muted" id="filter-count"></span>
+
+  <select class="form-select form-select-sm w-auto" id="page-size"
+          aria-label="عدد الصفوف في الصفحة">
+    <option value="50">50 صفّاً</option>
+    <option value="100">100 صفّ</option>
+    <option value="250">250 صفّاً</option>
+    <option value="0">الكل (قد يبطئ)</option>
+  </select>
+
+  <div class="ms-md-auto d-flex align-items-center gap-2">
+    <span class="small muted" id="scan-state"></span>
+    <button class="btn btn-sm btn-outline-secondary" id="sync-now"
+            title="تحديث تزايدي للبيانات — البيانات تُحدّث تلقائيًا في الخلفية">
+      مزامنة البيانات
+    </button>
+    <button class="btn btn-sm btn-primary" id="scan-now"
+            title="فحص السوق الآن على البيانات المزامَنة">
+      فحص السوق الآن
+    </button>
+  </div>
+</div>
+
+{% if data_notice %}
+  <div class="alert alert-warning py-2 small mb-3" role="alert">
+    <strong>جودة البيانات:</strong> {{ data_notice.text }}
+  </div>
+{% endif %}
+
+{% comment %} ═══ دليل الشركات — السوق السعودي ═══
+
+       مرحلتان لا واحدة: «من في السوق؟» رخيص ومجاني (طلبان لتاسي
+       ونمو)، و«ما تاريخ هذا السهم؟» غالٍ (ثلاثمئة طلب). وربطهما
+       في زرٍّ واحد يعني أن تعثّر الثاني يُضيّع الأوّل.
+
+       مطويّة ابتداءً: عمليّةٌ تُجرى مرّةً في اليوم لا تستحقّ أن
+       تزاحم النتائج التي تُقرأ كل دقيقة.
+{% endcomment %}
+    {% if market == "saudi" %}
+    <details id="companies-panel" class="card mb-3">
+      <summary class="card-body py-2 d-flex justify-content-between
+                      align-items-center" style="cursor:pointer">
+        <span class="fw-semibold">دليل شركات السوق السعودي</span>
+        <span class="small muted" id="co-summary">—</span>
+      </summary>
+      <div class="card-body pt-0">
+        <p class="small muted mb-2">
+          أوّلاً الشركات ومعلوماتها من «سهمك» (مجاني)، ثمّ التاريخ
+          من مصدر الشموع. كلٌّ منهما يعمل في الخلفية — يمكنك مغادرة
+          الصفحة والعودة.
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <button class="btn btn-sm btn-primary" id="co-fetch">
+            ١ · جلب الشركات ومعلوماتها
+          </button>
+          <button class="btn btn-sm btn-outline-secondary" id="co-history">
+            ٢ · جلب التاريخ للناقص
+          </button>
+          <div class="form-check form-switch align-self-center ms-2">
+            <input class="form-check-input" type="checkbox" id="co-resume"
+                   checked>
+            <label class="form-check-label small muted" for="co-resume">
+              أكمل الناقص فقط
+            </label>
+          </div>
+          <div class="form-check form-switch align-self-center ms-2">
+            <input class="form-check-input" type="checkbox" id="co-quotes"
+                   checked>
+            <label class="form-check-label small muted" for="co-quotes">
+              مع الأسعار والأساسيات (أبطأ — طلبٌ لكل شركة)
+            </label>
+          </div>
+        </div>
+
+        <div id="co-progress" class="mb-2 d-none">
+          <div class="d-flex justify-content-between small muted">
+            <span id="co-progress-note">…</span>
+            <span id="co-progress-eta"></span>
+          </div>
+          <div class="progress" style="height:6px">
+            <div class="progress-bar" id="co-progress-bar"
+                 role="progressbar" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="co-msg" class="small mb-2"></div>
+
+        {% comment %}         ═══ تحليل القطاعات ═══
+
+           التغطية أوّل ما يُعرَض لا آخره: جدولٌ يصف ٨٫٥٪ من السوق
+           ويبدو كأنّه يصفه كلّه أخطر من لا شيء — قارئ الجدول لا
+           يرى ما ليس فيه.
+        {% endcomment %}
+        <div id="co-sectors" class="mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold small">تحليل القطاعات</span>
+            <span class="small" id="co-cov"></span>
+          </div>
+          <div id="co-cov-warn" class="alert py-2 px-3 mb-2 d-none"
+               role="status" style="border:1px solid var(--warn);
+               background:transparent;color:var(--warn);font-size:13px"></div>
+          <div class="table-responsive" style="max-height:300px;overflow:auto">
+            <table class="table table-sm align-middle mb-0" id="co-sec-table">
+              <thead><tr>
+                <th>القطاع</th>
+                <th class="text-end">شركات</th>
+                <th class="text-end">نمو</th>
+                <th class="text-end">وسيط التغيّر</th>
+                <th class="text-end">صاعد/هابط</th>
+                <th class="text-end">وسيط م.ربحية</th>
+                <th class="text-end">لها تاريخ</th>
+              </tr></thead>
+              <tbody><tr><td colspan="7" class="muted small">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <input class="form-control form-control-sm" id="co-search"
+                 placeholder="بحث بالرمز أو الاسم" style="max-width:220px">
+          <select class="form-select form-select-sm" id="co-sector"
+                  style="max-width:220px">
+            <option value="">كل القطاعات</option>
+          </select>
+        </div>
+        <div class="table-responsive" style="max-height:420px;overflow:auto">
+          <table class="table table-sm align-middle mb-0" id="co-table">
+            <thead><tr>
+              <th>الرمز</th><th>الشركة</th><th>القطاع</th>
+              <th class="text-end">السعر</th>
+              <th class="text-end">التغيّر</th>
+              <th class="text-end">مكرّر الربحية</th>
+              <th class="text-end">الشموع</th>
+            </tr></thead>
+            <tbody><tr><td colspan="7" class="muted small">
+              لا شركات بعد — اضغط «جلب الشركات».
+            </td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+    {% endif %}
+
+{% if not has_run %}
+  <div class="card">
+    <div class="card-body empty">
+      لا توجد نتائج بعد لسوق <strong>{{ market }}</strong>
+      على فريم <strong>{{ tf_label }}</strong>.
+      <div class="my-3">
+        <button class="btn btn-primary" id="scan-empty">
+          فحص {{ market }} · {{ tf_label }} الآن
+        </button>
+      </div>
+      <div class="small">أو من الطرفية:</div>
+      <code class="d-inline-block mt-1" dir="ltr"
+        >python web/manage.py scan --market {{ market }} --timeframe {{ timeframe }}</code>
+
+      {% if populated %}
+        <hr class="my-4">
+        <div>جاهز للعرض الآن:
+          {% for p in populated %}
+            <a href="/scanner/?market={{ p.market }}&tf={{ p.timeframe }}"
+               class="up text-decoration-none">{{ p.market }} · {{ p.timeframe }}</a
+            >{% if not forloop.last %} · {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <hr class="my-4">
+        <div>لا بيانات في أي سوق بعد — هذه أول مرة تشغّل فيها اللوحة.</div>
+      {% endif %}
+
+      {% if setup_hint %}
+        <div class="alert alert-warning small mt-3 text-start mb-0">
+          <strong>الإعداد ناقص:</strong> {{ setup_hint }}
+        </div>
+      {% elif market == "us" %}
+        <div class="warn small mt-3">
+          المفاتيح مضبوطة. إن بقيت الصفحة فارغة فشغّل المسح من الطرفية
+          وراقب رسائله — فهي تذكر سبب رفض كل رمز.
+        </div>
+      {% elif market != "crypto" %}
+        <div class="warn small mt-3">
+          أسواق الأسهم تحتاج <code dir="ltr">pip install yfinance</code>
+          لتغطية موثوقة، وبياناتها نهاية يوم لا لحظية.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+{% else %}
+
+<div id="widget-scanner-summary" class="widget-shell mb-3" data-state="loading">
+  <div class="widget-skeleton">
+    <div class="row g-2">
+      {% for i in "12345" %}
+      <div class="col-6 col-md"><div class="skel skel-card"></div></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="widget-error"></div>
+  <div class="widget-content">
+    {% comment %}     مصدر قائمة الرموز — يظهر فقط عند التدهور.
+       التحذير الدائم يُهمَل؛ وهذا يظهر حين يُمسح السوق على عشرة أسهم
+       بينما الإعداد يَعِد بمئات.
+    {% endcomment %}
+    {% comment %}
+      يظهر حين يخالف الفريم المعروض المطلوب — والخادم يستبدل
+      الفريم غير الممسوح بأحدث ما مُسح فعلاً. وكان يفعل ذلك بصمت.
+    {% endcomment %}
+    <div id="tf-notice" hidden></div>
+
+    <div id="universe-note" class="alert py-2 px-3 mb-3 d-none"
+         role="status" style="border:1px solid var(--warn);
+         background:transparent;color:var(--warn);font-size:14px"></div>
+
+
+  <div class="ds-metrics mb-3">
+    <div class="ds-metric ds-metric--sm">
+      <span class="ds-metric__label">رموز مفحوصة</span>
+      <span class="ds-metric__value" id="c-scanned">—</span>
+      <span class="ds-metric__foot"><span class="ds-text-muted">في آخر جولة</span></span>
+    </div>
+    <div class="ds-metric ds-metric--sm ds-metric--success">
+      <span class="ds-metric__label">مكتمل الشروط</span>
+      <span class="ds-metric__value" id="c-ready">—</span>
+      <span class="ds-metric__foot"><span class="ds-text-muted">جاهزة للقرار</span></span>
+    </div>
+    <div class="ds-metric ds-metric--sm ds-metric--warn">
+      <span class="ds-metric__label">تعذّر جلبها</span>
+      <span class="ds-metric__value" id="c-failed">—</span>
+      <span class="ds-metric__foot"><span class="ds-text-muted">بيانات ناقصة</span></span>
+    </div>
+    <div class="ds-metric ds-metric--sm">
+      <span class="ds-metric__label">زمن المسح</span>
+      <span class="ds-metric__value" id="c-dur">—</span>
+      <span class="ds-metric__foot"><span class="ds-text-muted">ثانية</span></span>
+    </div>
+    <div class="ds-metric ds-metric--sm">
+      <span class="ds-metric__label">آخر تحديث</span>
+      <span class="ds-metric__value" id="c-time">—</span>
+    </div>
+  </div>
+    </div>
+  </div>
+</div>
+
+<div class="table-wrap">
+<table id="tbl" class="table data-table table-hover table-borderless compact align-middle"
+       style="min-width:1598px">
+  <colgroup>
+    <col style="width:108px"><col style="width:132px"><col style="width:64px">
+    <col style="width:96px"><col style="width:96px"><col style="width:96px">
+    <col style="width:62px"><col style="width:58px"><col style="width:150px">
+    <col style="width:104px"><col style="width:118px"><col style="width:88px">
+    <col style="width:98px"><col style="width:92px"><col style="width:84px">
+    <col style="width:84px"><col style="width:60px"><col style="width:62px">
+    <col style="width:104px"><col style="width:118px">
+    <col style="width:104px"><col style="width:48px">
+  </colgroup>
+  <thead><tr>
+    <th data-k="symbol">الرمز</th>
+    <th data-k="action">التوصية</th>
+    <th data-k="score">النقاط</th>
+    <th data-k="entry">الدخول</th><th data-k="stop">الوقف</th>
+    <th data-k="target1">الهدف</th><th data-k="rr">R:R</th>
+    <th data-k="confluence">التقاء</th><th data-k="reasons">الأسباب</th>
+    <th data-k="chart_pattern" class="extra">النموذج</th>
+    <th data-k="elliott" class="extra">إليوت</th>
+    <th data-k="htf">الفريم الأعلى</th>
+    <th data-k="close">إغلاق الشمعة</th>
+    <th>السعر الآن</th>
+    <th class="extra">تغيّر 24س</th><th>الانزياح</th>
+    <th data-k="rsi" class="extra">RSI</th>
+    <th data-k="atr_pct" class="extra">ATR%</th>
+    <th data-k="compliance">الفرز الشرعي</th>
+    <th data-k="blocker">المانع</th>
+    <th data-k="quote_volume">السيولة (24س)</th><th>الشارت</th>
+    {# عمود الحظر: قرار المستخدم، والفرز الشرعي المجاور تصنيفٌ لا حكم #}
+    <th title="حظر شرعي — يستبعده من المسح">حظر</th>
+  </tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+</div>
+<div id="pager"></div>
+
+<div class="alert alert-secondary small mt-3 mb-0">
+  <strong>الفرز الشرعي تصنيف أوّلي لا فتوى</strong> — وهو لا يمنع شيئاً.
+  ولمنع رمزٍ نهائياً اضغط <strong>حظر</strong> في آخر عموده، فيُستبعد من
+  المسح والتحليل وفتح الصفقات، ويُدار من
+  <a href="/blocked/">الرموز المحظورة</a>. قواعد الفرز في
+  <code dir="ltr">config/compliance.yaml</code> ويمكنك تعديلها. الحكم في الأسهم
+  والعملات اجتهادي تختلف فيه الهيئات ويحتاج بيانات مالية غير متوفرة هنا —
+  تحقّق من مصدر معتمد قبل أي قرار.
+  <hr class="my-2">
+  الصفوف المظللة استوفت كل الشروط · اضغط أي عنوان للفرز ·
+  <strong>إغلاق الشمعة</strong> هو السعر الذي بُنيت عليه الإشارة،
+  و<strong>السعر الآن</strong> يتحدّث لحظياً، و<strong>الانزياح</strong>
+  هو الفارق بينهما — تجاوزه 1.5% يعني أن نقطة الدخول لم تعد كما كانت.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ payload|json_script:"page-data" }}
+<script>
+(function () {
+  var el = document.getElementById("page-data");
+  if (!el) throw new Error("page-data مفقود — تحقّق من json_script في القالب");
+  var d = JSON.parse(el.textContent);
+  window.MARKET = d.market;
+  window.INITIAL_COUNTDOWN = d.countdown;
+  window.TIMEFRAME = d.timeframe;
+})();
+</script>
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/ai-advisor-explain.js' %}"></script>
+<script src="{% asset 'dashboard/livefeed.js' %}"></script>
+<script src="{% asset 'dashboard/widgets.js' %}"></script>
+<script src="{% asset 'dashboard/advice.js' %}"></script>
+<script src="{% asset 'dashboard/app.js' %}"></script>
+{% if market == "saudi" %}
+{# دليل الشركات — سعوديّ فقط، فلا يُحمَّل حيث لا يُستعمل #}
+<script src="{% asset 'dashboard/companies.js' %}"></script>
+{% endif %}
+{% if has_run %}
+<script>
+(function () {
+  var market = window.MARKET || "crypto";
+  var tf = window.TIMEFRAME || "";
+  var qs = "?market=" + encodeURIComponent(market);
+  if (tf) qs += "&tf=" + encodeURIComponent(tf);
+
+  DashboardWidgets.register("widget-scanner-summary", {
+    url: "/api/widgets/scanner/summary/" + qs,
+    interval: DashboardWidgets.INTERVALS.DASHBOARD_CARDS,
+    lazy: false,
+    render: function (el, data) {
+      var run = data.run;
+      if (!run) return;
+      var scanned = document.getElementById("c-scanned");
+      var ready = document.getElementById("c-ready");
+      var failed = document.getElementById("c-failed");
+      var dur = document.getElementById("c-dur");
+      var time = document.getElementById("c-time");
+      if (scanned) scanned.textContent = run.scanned;
+      if (ready) {
+        ready.textContent = run.ready;
+        ready.className = "fs-4 fw-semibold " + (run.ready ? "up" : "dim");
+      }
+      if (failed) failed.textContent = run.failed;
+      if (dur) dur.textContent = run.duration;
+      if (time && run.started_at) {
+        time.textContent = new Date(run.started_at).toLocaleTimeString("ar", {hour:"2-digit", minute:"2-digit"});
+      }
+    },
+  });
+  DashboardWidgets.boot();
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,89 @@
+# ═══════════════════════════════════════════════════════════════
+#  قواعد الفرز الشرعي الأوّلي — ملف قابل للتعديل بالكامل
+#
+#  هذا ليس فتوى. الحكم في الأسهم والعملات اجتهادي تختلف فيه الهيئات،
+#  ويحتاج بيانات مالية (نسب الدين والإيرادات المحرّمة) غير متوفرة هنا.
+#  استخدمه لتوجيه انتباهك، وتحقّق من مصدر معتمد قبل أي قرار.
+#
+#  الحالات: compliant · non_compliant · review · unknown
+# ═══════════════════════════════════════════════════════════════
+
+markets:
+  crypto:
+    default_status: review
+    default_reason: >-
+      حكم العملات الرقمية محل خلاف بين الهيئات. راجع طبيعة المشروع:
+      هل يقوم على أصل حقيقي أم على إقراض بفائدة أو مضاربة محضة
+    source: تصنيف افتراضي
+
+  saudi:
+    default_status: review
+    default_reason: >-
+      تحقّق من قائمة الأسهم المتوافقة مع الضوابط الشرعية المعتمدة
+      لدى هيئتك، فالنسب المالية تتغيّر كل ربع
+    source: تصنيف افتراضي
+
+  us:
+    default_status: review
+    default_reason: تحتاج فرزاً مالياً (نسب الدين والإيرادات) غير متوفر هنا
+    source: تصنيف افتراضي
+
+categories:
+  interest_lending:
+    status: non_compliant
+    reason: مشاريع إقراض بفائدة أو عوائد ربوية
+    source: طبيعة النشاط
+    members: [AAVE, COMP, MKR, CRV, LDO, JST, VENUS, XVS, ALPACA]
+
+  gambling:
+    status: non_compliant
+    reason: منصات ميسر ورهان
+    source: طبيعة النشاط
+    members: [FUN, WINK, WIN, ROLLBIT, RLB, DEGEN]
+
+  interest_stablecoins:
+    status: review
+    reason: >-
+      عملات مستقرة مغطّاة بسندات وودائع بفائدة — الخلاف في حكم
+      الاحتفاظ بها وفي عوائدها
+    source: طبيعة الغطاء
+    members: [USDC, USDT, TUSD, FDUSD, DAI, PYUSD, USDE, RLUSD]
+
+  conventional_finance:
+    status: non_compliant
+    reason: بنوك وتأمين تقليدي
+    source: طبيعة النشاط
+    members: [JPM, BAC, WFC, C, GS, MS, AIG, MET, ALL]
+
+  alcohol_tobacco:
+    status: non_compliant
+    reason: كحول أو تبغ
+    source: طبيعة النشاط
+    members: [BUD, TAP, STZ, DEO, MO, PM, BTI]
+
+  entertainment_review:
+    status: review
+    reason: ترفيه ومحتوى — يحتاج نظراً في طبيعة الإنتاج
+    source: طبيعة النشاط
+    members: [NFLX, DIS, WBD, PARA]
+
+# رموز بعينها — تسبق كل ما سبق
+symbols:
+  BTC:
+    status: review
+    reason: >-
+      عملة رقمية بلا أصل مادي ولا جهة مصدرة. أجازها بعض المعاصرين
+      كعرض تجاري ومنعها آخرون لغياب القيمة الذاتية والتذبذب الشديد
+    source: خلاف معاصر
+
+  ETH:
+    status: review
+    reason: >-
+      شبكة عقود ذكية. الخلاف في العملة نفسها، ويُضاف نظر في عوائد
+      التخزين (Staking) هل هي إجارة أم قرض بفائدة
+    source: خلاف معاصر
+
+  2222.SR:
+    status: review
+    reason: أرامكو — تحقّق من نسب الفرز المالي المحدّثة ربعياً
+    source: يحتاج بيانات مالية

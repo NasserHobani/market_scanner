@@ -1,0 +1,99 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}المحفظة الورقية · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>المحفظة الورقية</h1>
+    <p>تنفيذٌ محاكى بمالٍ غير حقيقي — برسوم بينانس وإدارة مخاطر.</p>
+  </div>
+  <div class="ds-page-header__actions">
+    <button type="button" class="ds-btn" id="tick">شغّل دورة</button>
+    <button type="button" class="ds-btn ds-btn--primary" id="refresh">حدّث</button>
+  </div>
+</header>
+
+{% comment %}
+حدٌّ لا يجوز أن يُخفى: الهدف يوقف الفتح عند بلوغه، ولا يضمن بلوغه.
+والرسوم وحدها ‎0.2٪‎ ذهاباً وإياباً، فحركةٌ أقلّ من ‎0.3٪‎ خاسرة
+مهما بدا السعر مرتفعاً.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">الهدف حدٌّ يوقف الفتح — لا وعدٌ ببلوغه</p>
+    <p class="ds-insight__text">
+      عند بلوغ <strong id="tgt-label">3٪</strong> تتوقّف المحفظة عن فتح
+      صفقات جديدة. وقد تنتهي تحت رأس مالها — وهذا ما تُبنى المحاكاة
+      لتُظهره قبل المال الحقيقي. والرسوم <strong>0.2٪</strong> ذهاباً
+      وإياباً، فحركةٌ أقلّ من <strong>0.3٪</strong> خاسرة رغم ارتفاع السعر.
+    </p>
+  </div>
+</div>
+
+<div class="ds-metrics mb-4" id="paper-summary"></div>
+
+<section class="ds-card mb-4">
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">الإعدادات</h3>
+    <span class="ds-card__meta" id="settings-msg"></span>
+  </div>
+  <div class="p-3">
+    <form id="settings-form" class="ds-filterbar" style="margin:0">
+      <label class="ds-field"><span class="ds-field__label">مخاطرة/صفقة ٪</span>
+        <input type="number" step="0.05" min="0.05" max="10" name="risk_per_trade_pct" class="ds-input" style="width:6rem"></label>
+      <label class="ds-field"><span class="ds-field__label">أقصى مراكز</span>
+        <input type="number" step="1" min="1" max="50" name="max_open_positions" class="ds-input" style="width:5rem"></label>
+      <label class="ds-field"><span class="ds-field__label">سقف المركز ٪</span>
+        <input type="number" step="1" min="1" max="100" name="max_position_pct" class="ds-input" style="width:6rem"></label>
+      <label class="ds-field"><span class="ds-field__label">خسارة يومية ٪</span>
+        <input type="number" step="0.5" min="0" max="50" name="max_daily_loss_pct" class="ds-input" style="width:6rem"></label>
+      <label class="ds-field"><span class="ds-field__label">الهدف الإجمالي ٪</span>
+        <input type="number" step="0.5" min="0" max="500" name="target_total_pct" class="ds-input" style="width:6rem"></label>
+      <label class="ds-field"><span class="ds-field__label">أدنى ع/م</span>
+        <input type="number" step="0.1" min="0.5" max="10" name="min_rr" class="ds-input" style="width:5rem"></label>
+      <label class="ds-field"><span class="ds-field__label">رسوم ٪</span>
+        <input type="number" step="0.01" min="0" max="1" name="fee_pct" class="ds-input" style="width:5rem"></label>
+      <label class="ds-field"><span class="ds-field__label">انزلاق ٪</span>
+        <input type="number" step="0.01" min="0" max="2" name="slippage_pct" class="ds-input" style="width:5rem"></label>
+      <label class="ds-field"><span class="ds-field__label">المصدر</span>
+        <select name="source" class="ds-input" style="width:8rem">
+          <option value="pes">PES</option>
+          <option value="scanner">الماسح</option>
+        </select></label>
+      <label class="ds-field"><span class="ds-field__label">أدنى نقاط</span>
+        <input type="number" step="5" min="0" max="100" name="min_score" class="ds-input" style="width:5rem"></label>
+      <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm">احفظ</button>
+    </form>
+    <div class="mt-3" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+      <label class="ds-field"><span class="ds-field__label">رأس مال جديد</span>
+        <input type="number" step="100" min="1" id="reset-balance" class="ds-input" style="width:8rem"></label>
+      {% comment %}
+      إعادة التصفير تحذف الصفقات: محفظةٌ برصيدٍ جديد وصفقاتٍ قديمة
+      تُنتج إحصاءً لا معنى له. والتأكيد لأنّ الحذف لا رجعة فيه.
+      {% endcomment %}
+      <button type="button" class="ds-btn ds-btn--sm" id="reset">صفّر المحفظة</button>
+      <span class="small muted">يحذف كل الصفقات ويبدأ من جديد</span>
+    </div>
+  </div>
+</section>
+
+<div class="ds-tabs" id="paper-tabs">
+  <button type="button" class="ds-tab" data-tab="open">المفتوحة</button>
+  <button type="button" class="ds-tab" data-tab="won">الرابحة</button>
+  <button type="button" class="ds-tab" data-tab="lost">الخاسرة</button>
+  <button type="button" class="ds-tab" data-tab="all">الكل</button>
+</div>
+<div id="paper-trades" class="mt-3"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/paper-page.js' %}"></script>
+{% endblock %}
