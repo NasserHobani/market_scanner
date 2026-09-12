@@ -126,6 +126,52 @@ CSRF_TRUSTED_ORIGINS = [
     for port in ("", ":8000", ":8080")
 ]
 
+# ═══════════ خلف وكيلٍ عكسيّ (Nginx Proxy Manager وغيره) ═══════════
+#
+# ═══ ما يكسر بلا هذا ═══
+#
+# الوكيل يُنهي TLS ثمّ يمرّر الطلب إلى الحاوية بـ HTTP عاديّ. فلا
+# يعرف Django أنّ الأصل كان HTTPS — ما لم تُقرأ ترويسة
+# ``X-Forwarded-Proto``.
+#
+# والأثر يظهر في الاستمارات: طلبُ POST من صفحةٍ عنوانها ‎https://‎
+# يحمل ‎Origin: https://…‎، و‏Django يقارنه بما يظنّه أصلَه —
+# فيراه ‎http://‎ ويردّ **403**. أي أنّ الصفحة تُفتح وتُقرأ وكل
+# زرٍّ فيها يفشل، بلا رسالةٍ تقول لماذا.
+#
+# ═══ ولماذا هو مشروط ═══
+#
+# الوثوق بهذه الترويسات بلا وكيلٍ أمامك ثغرة: يستطيع أيّ زائر
+# إرسال ``X-Forwarded-Proto: https`` فيوهم Django بأنّ اتّصاله
+# مؤمَّن. فلا تُقرأ إلّا إن أُعلن الوكيل صراحةً.
+TRUST_PROXY = os.getenv("TRUST_PROXY", "0") == "1"
+if TRUST_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # والمضيف من ``X-Forwarded-Host`` لا من ``Host`` الداخلي:
+    # ‏NPM يمرّر النطاق العامّ في الأولى.
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
+
+# ═══ ونطاقٌ صريح للاستمارات ═══
+#
+# ‏``CSRF_TRUSTED_ORIGINS`` أعلاه مشتقٌّ من ``ALLOWED_HOSTS``
+# بمنافذ ثابتة. وخلف وكيلٍ على منفذٍ غير معتاد لا يكفي، فيُقبل
+# عنوانٌ صريح — بمخطَّطه، كما يشترط Django 4+:
+#
+#   DJANGO_CSRF_TRUSTED_ORIGINS=https://scanner.example.com
+_extra_csrf = [o.strip() for o in
+               os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+               if o.strip()]
+if _extra_csrf:
+    bad = [o for o in _extra_csrf if "://" not in o]
+    if bad:
+        # ‏Django يرمي عند أوّل طلب لا عند الإقلاع، فالخطأ يظهر
+        # بعيداً عن سببه. والتنبيه هنا عنده.
+        print(f"⚠ DJANGO_CSRF_TRUSTED_ORIGINS يحتاج المخطَّط "
+              f"(https://…): {bad}")
+    CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(
+        CSRF_TRUSTED_ORIGINS + _extra_csrf))
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
