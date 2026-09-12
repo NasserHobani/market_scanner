@@ -141,11 +141,7 @@ services:
       #
       # للوصول من جهازك:  ssh -L 8000:127.0.0.1:8000 user@server
       # أو ضع وكيلاً عكسياً بكلمة مرور. انظر docs/PORTAINER.md.
-<<<<<<< Updated upstream
-      - "${WEB_PORT:-8001}"
-=======
       - "${WEB_PORT:-8000}:8001"
->>>>>>> Stashed changes
     volumes:
       # الشموع ولقطات الميزات — لا تدخل الصورة، وتبقى بعد كل بناء
       - appdata:/app/data
