@@ -27,8 +27,37 @@ die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 # وهنا يقع الفحص داخل الحاوية: يظهر في سجلّها، ويقول ما يُفعل،
 # ولا يمنع بقيّة المكدّس من الإقلاع.
 
+# ═══ المفتاح السرّي يُولَّد ويُحفظ — لا يُطلب من المستخدم ═══
+#
+# كان مطلوباً في البيئة. وكان ذلك تحميلاً للمستخدم بلا داعٍ:
+# المفتاح لا يعني شيئاً لأحد، وشرطُه الوحيد أن **يثبت** بين
+# الإقلاعات وبين عمّال gunicorn الثلاثة — وإلّا انتهت الجلسات
+# ورموز CSRF بلا سبب ظاهر.
+#
+# ووحدة ``/app/data`` تبقى بعد كل بناء ونشر. فالمفتاح يُولَّد
+# مرّة ويُقرأ بعدها. والبيئة تعلوه إن ضُبطت صراحةً.
+SECRET_FILE="/app/data/.django_secret_key"
+if [ -z "${DJANGO_SECRET_KEY:-}" ]; then
+  if [ -s "$SECRET_FILE" ]; then
+    DJANGO_SECRET_KEY="$(cat "$SECRET_FILE")"
+    log "قُرئ المفتاح السرّي من وحدة البيانات"
+  else
+    DJANGO_SECRET_KEY="$(python -c \
+      'import secrets;print(secrets.token_urlsafe(50))')"
+    # ‏umask قبل الكتابة لا chmod بعدها: بين الإنشاء والتقييد
+    # نافذةٌ يكون فيها الملفّ مقروءاً للجميع.
+    ( umask 077; printf '%s' "$DJANGO_SECRET_KEY" > "$SECRET_FILE" )
+    log "وُلِّد مفتاحٌ سرّي جديد وحُفظ في وحدة البيانات"
+  fi
+  export DJANGO_SECRET_KEY
+fi
+
+# ═══ وما يبقى مطلوباً فعلاً ═══
+#
+# كلمة مرور القاعدة وحدها: تُنشأ بها القاعدة، فلا يستطيع هذا
+# الطرف أن يخترعها — لا بدّ أن تطابق ما بُنيت به.
 missing=""
-for v in DJANGO_SECRET_KEY POSTGRES_DB POSTGRES_PASSWORD; do
+for v in POSTGRES_DB POSTGRES_PASSWORD; do
   eval "val=\${$v:-}"
   [ -n "$val" ] || missing="$missing $v"
 done
@@ -37,12 +66,26 @@ if [ -n "$missing" ]; then
   printf '\n' >&2
   printf '✗ متغيّرات ناقصة:%s\n' "$missing" >&2
   printf '\n' >&2
-  printf '  محلّياً:   اكتبها في ملفّ ‎.env‎ بجوار docker-compose.yml\n' >&2
-  printf '  ببورتينر: الـStack ← Environment variables ← أضفها\n' >&2
-  printf '            ثمّ Update the stack\n' >&2
+  # ═══ ما تراه الحاوية فعلاً ═══
+  #
+  # «متغيّر ناقص» تُقرأ «لم أكتبه». وقد يكون كُتب ولم يصل — وهو
+  # ما وقع: مكدّسٌ لا يملكه بورتينر لا تصله متغيّراته. والفرق
+  # يغيّر ما يفعله القارئ تماماً، فيُعرض بدل أن يُخمَّن.
+  printf '  ── ما وصل هذه الحاوية فعلاً ──\n' >&2
+  for v in POSTGRES_DB POSTGRES_USER POSTGRES_HOST DJANGO_ALLOWED_HOSTS \
+           SCANNER_TIMEZONE AUTO_SCAN_MARKETS; do
+    eval "val=\${$v:-}"
+    printf '     %-22s %s\n' "$v" "${val:-(فارغ)}" >&2
+  done
   printf '\n' >&2
-  printf '  ولتوليد المفتاح السرّي وكلمة المرور:\n' >&2
-  printf '    python -c "import secrets;print(secrets.token_urlsafe(50))"\n' >&2
+  printf '  فإن كانت هذه قيماً افتراضية وما كتبتَه غائب، فالمتغيّرات\n' >&2
+  printf '  لم تصل النشر — لا أنّك لم تكتبها:\n' >&2
+  printf '\n' >&2
+  printf '   · المكدّس «Limited / created outside Portainer» لا تصله\n' >&2
+  printf '     متغيّرات بورتينر. أزله من طرفية الخادم وأنشئه من جديد:\n' >&2
+  printf '       docker compose -p market-scanner down --remove-orphans\n' >&2
+  printf '   · أو أنّها لم تُحفظ: افتح الـStack ← Environment variables\n' >&2
+  printf '     ويجب أن تراها **في الجدول** اسماً وقيمة\n' >&2
   printf '\n' >&2
   printf '  والقائمة كاملةً في ‎.env.docker.example‎\n' >&2
   die "لن أُقلع بإعداداتٍ ناقصة."

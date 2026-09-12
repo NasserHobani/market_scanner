@@ -137,11 +137,36 @@ check("  ولا صيغة ‎:?‎ في compose", ":?" not in _cc,
       str([l.strip() for l in _cc.splitlines() if ":?" in l][:2]))
 
 # والتحقّق موجودٌ في نقطة الدخول، ويسمّي الناقص
-check("  والتحقّق في نقطة الدخول",
-      "متغيّرات ناقصة" in EP)
-for _v in ("DJANGO_SECRET_KEY", "POSTGRES_DB", "POSTGRES_PASSWORD"):
-    check(f"  ويشمل {_v}",
-          _v in EP.split("missing=")[1].split("if [ -n")[0])
+check("  والتحقّق في نقطة الدخول", "متغيّرات ناقصة" in EP)
+_req = EP.split("missing=")[1].split("if [ -n")[0]
+for _v in ("POSTGRES_DB", "POSTGRES_PASSWORD"):
+    check(f"  ويشمل {_v}", _v in _req)
+
+# ═══ المفتاح السرّي لا يُطلب من المستخدم ═══
+#
+# كان مطلوباً في البيئة — تحميلٌ بلا داعٍ: المفتاح لا يعني شيئاً
+# لأحد، وشرطُه الوحيد أن **يثبت** بين الإقلاعات وبين عمّال
+# gunicorn الثلاثة، وإلّا انتهت الجلسات ورموز CSRF بلا سبب.
+#
+# ووحدة ``/app/data`` تبقى بعد كل نشر، فالمفتاح يُولَّد مرّة
+# ويُقرأ بعدها.
+check("  ولا يُطلب المفتاح السرّي", "DJANGO_SECRET_KEY" not in _req)
+check("  بل يُولَّد ويُحفظ", "SECRET_FILE" in EP and "token_urlsafe" in EP)
+check("  في وحدة البيانات", "/app/data/.django_secret_key" in EP)
+check("  ويُقرأ إن وُجد", 'if [ -s "$SECRET_FILE" ]' in EP)
+# ‏umask قبل الكتابة لا chmod بعدها: بينهما نافذةٌ يكون فيها
+# الملفّ مقروءاً للجميع
+check("  ويُقيَّد بـ umask لا chmod", "umask 077" in EP)
+# والبيئة تعلوه: من أراد مفتاحاً بعينه يضبطه
+check("  والبيئة تعلوه", 'if [ -z "${DJANGO_SECRET_KEY:-}" ]' in EP)
+
+# ═══ ويُعرَض ما وصل الحاوية فعلاً ═══
+#
+# «متغيّر ناقص» تُقرأ «لم أكتبه». وقد يكون كُتب ولم يصل — وهو ما
+# وقع: مكدّسٌ لا يملكه بورتينر لا تصله متغيّراته.
+check("  ويعرض ما وصل فعلاً", "ما وصل هذه الحاوية فعلاً" in EP)
+check("  ويشرح المكدّس غير المملوك", "Limited" in EP)
+check("  ويعطي أمر الإزالة", "down --remove-orphans" in EP)
 # ويقول أين تُكتب في الحالتين — الرسالة التي لا تقول ما يُفعل
 # تُكافئ الصمت
 check("  ويدلّ على ‎.env‎", "‎.env‎" in EP)
