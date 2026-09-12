@@ -86,7 +86,16 @@ COPY --chown=app:app . /app
 # فإن كانت للجذر عجز التطبيق عن الكتابة و«لا يعمل بلا سبب».
 RUN mkdir -p /app/data /app/reports /app/web/staticfiles \
     && chown -R app:app /app/data /app/reports /app/web/staticfiles \
-    && chmod +x /app/docker-entrypoint.sh
+    # ═══ كل سكربتات التشغيل لا نقطة الدخول وحدها ═══
+    #
+    # كان ``chmod +x /app/docker-entrypoint.sh`` وحده. ونقطة الدخول
+    # عملت، فبدا كل شيء سليماً — ثمّ سقط المجدول وحده بـ
+    # ``Permission denied`` وأُعيد بلا توقّف.
+    #
+    # والسبب أنّ Git لا يحفظ بتَّ التنفيذ على ويندوز: الملفّات
+    # تصل الصورة بوضع ‎644‎، فما لم يُذكر صراحةً يبقى غير قابل
+    # للتنفيذ. والنمط ‎docker-*.sh‎ يشمل ما يأتي لاحقاً أيضاً.
+    && chmod +x /app/docker-*.sh
 
 USER app
 

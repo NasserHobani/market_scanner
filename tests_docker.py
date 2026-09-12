@@ -250,6 +250,59 @@ check("  ولا مفاتيح فيه",
       or "ALPACA_API_KEY=\n" in tpl)
 
 
+# ═══ ٧ب) كل سكربتٍ يُنفَّذ يجب أن يكون قابلاً للتنفيذ ═══
+#
+# ‏Git لا يحفظ بتَّ التنفيذ على ويندوز: الملفّات تصل الصورة بوضع
+# ‎644‎. وكان ``chmod +x`` يذكر نقطة الدخول وحدها — فعملت، وبدا
+# كل شيء سليماً، ثمّ سقط المجدول وحده:
+#
+#     /app/docker-scheduler.sh: Permission denied
+#
+# وأُعيد بلا توقّف. والعطب لا يظهر في البناء ولا في الويب.
+import re as _re2
+
+_scripts = set()
+# ما تنفّذه الخدمات في compose
+for _sv in SVC.values():
+    for _c in (_sv.get("command") or []):
+        if isinstance(_c, str) and _c.endswith(".sh"):
+            _scripts.add(_c.rsplit("/", 1)[-1])
+# وما تنفّذه الصورة
+for _m in _re2.finditer(r'ENTRYPOINT\s*\[\s*"([^"]+\.sh)"', DF):
+    _scripts.add(_m.group(1).rsplit("/", 1)[-1])
+
+check("٧ب رُصدت سكربتات التشغيل", len(_scripts) >= 2, str(sorted(_scripts)))
+
+# ‏chmod في الـDockerfile يغطّيها — صراحةً أو بنمط
+_chmod = [l for l in DF.splitlines()
+          if "chmod" in l and not l.strip().startswith("#")]
+_chmod_txt = " ".join(_chmod)
+# المطابقة بـ ``fnmatch`` لا بـ ``startswith``: النمط
+# ‎docker-*.sh‎ لا يُطابَق بقصّ نجمة من طرفه — وأوّل نسخةٍ من هذا
+# الفحص فعلت ذلك ورسبت على كودٍ سليم.
+from fnmatch import fnmatch as _fn
+
+_globs = _re2.findall(r"/app/(\S*\*\S*)", _chmod_txt)
+for _sc in sorted(_scripts):
+    _ok = _sc in _chmod_txt or any(_fn(_sc, g) for g in _globs)
+    check(f"  و{_sc} يُمنح التنفيذ", _ok,
+          f"الأنماط: {_globs}")
+
+# وبتُّ التنفيذ مضبوطٌ في Git أيضاً — لمن يشغّلها بلا Docker
+import subprocess as _sp
+
+try:
+    _modes = _sp.run(["git", "ls-files", "-s", "--", "*.sh"],
+                     cwd=ROOT, capture_output=True, text=True,
+                     timeout=20).stdout
+except Exception:  # noqa: BLE001
+    _modes = ""
+if _modes.strip():
+    _bad = [l.split("\t")[-1] for l in _modes.strip().splitlines()
+            if l.startswith("100644")]
+    check("  وبتُّ التنفيذ مضبوطٌ في Git", not _bad, str(_bad))
+
+
 # ═══ ٨أ) فحص الصحّة للعرض لا للبوّابة ═══
 #
 # كان ``depends_on: db: {condition: service_healthy}``. وأثره أنّ
@@ -309,6 +362,33 @@ check("  ويشير إلى صورة الويب",
 # والترتيب مقصود: Compose يبني كل ما له build قبل إنشاء أيّ
 # حاوية، والاعتماد يجعل النيّة مكتوبة لا مستنتَجة
 check("  وينتظر الويب", "web" in (SVC["scheduler"].get("depends_on") or {}))
+
+
+# ═══ ٨ج) خلف وكيلٍ عكسيّ ═══
+#
+# الوكيل يُنهي TLS ويمرّر بـ HTTP. فلا يعرف Django أنّ الأصل كان
+# HTTPS ما لم يقرأ ``X-Forwarded-Proto`` — والأثر أنّ الصفحات
+# تُفتح وتُقرأ ويفشل **كل زرّ** بـ 403، بلا رسالةٍ تقول لماذا.
+_st = (ROOT / "web" / "config" / "settings.py").read_text(encoding="utf-8")
+_sc = "\n".join(l for l in _st.splitlines() if not l.strip().startswith("#"))
+check("٨ج يقرأ ترويسة المخطَّط", "SECURE_PROXY_SSL_HEADER" in _sc)
+check("  والمضيف من الوكيل", "USE_X_FORWARDED_HOST" in _sc)
+# ═══ مشروطٌ لا دائم ═══
+#
+# الوثوق بهذه الترويسات بلا وكيلٍ أمامك ثغرة: يرسلها أيّ زائر
+# فيوهم Django بأنّ اتّصاله مؤمَّن.
+check("  ومشروطٌ بإعلان الوكيل", "TRUST_PROXY" in _sc
+      and "if TRUST_PROXY:" in _sc)
+check("  وافتراضه مطفأ", 'os.getenv("TRUST_PROXY", "0")' in _sc)
+check("  ويُمرَّر في compose", "TRUST_PROXY:" in _raw_compose)
+
+# وعنوانٌ صريح للاستمارات خلف منفذٍ غير معتاد
+check("  وأصلٌ صريح للاستمارات",
+      "DJANGO_CSRF_TRUSTED_ORIGINS" in _sc)
+# ‏Django يشترط المخطَّط ويرمي عند أوّل طلب لا عند الإقلاع —
+# فالتنبيه هنا، عند سببه
+check("  ويُنبَّه على المخطَّط الناقص", "يحتاج المخطَّق" in _st
+      or "يحتاج المخطَّط" in _st)
 
 
 # ═══ ٩) دليل بورتينر يذكر ما ينكسر ═══

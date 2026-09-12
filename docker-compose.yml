@@ -99,6 +99,16 @@ services:
       SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
       AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
 
+      # ── خلف وكيلٍ عكسيّ (Nginx Proxy Manager وغيره) ──
+      #
+      # ‏1 يجعل Django يقرأ ``X-Forwarded-Proto`` فيعرف أنّ الأصل
+      # كان HTTPS. وبلا ذلك تُفتح الصفحات ويفشل كل زرٍّ بـ 403،
+      # لأنّ ‏Django يقارن ``Origin: https://…`` بما يظنّه أصلَه.
+      #
+      # ولا تجعلها 1 بلا وكيلٍ أمامك: الترويسة تُزوَّر.
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+
       # ── المفاتيح: فارغةٌ افتراضاً، والسوق بلا مفتاح يُترك ──
       ALPACA_API_KEY: ${ALPACA_API_KEY:-}
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
