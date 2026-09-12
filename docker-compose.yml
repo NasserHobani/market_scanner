@@ -63,7 +63,6 @@ services:
       COLLECT_STATIC: "1"
       SEED_JOBS: ${SEED_JOBS:-1}
     ports:
-<<<<<<< Updated upstream
       # ═══ الربط مغلقٌ افتراضاً — اقرأ قبل تغييره ═══
       #
       # لا تسجيل دخول في هذا النظام. ولا صفحة واحدة تسأل عن هويّة.
