@@ -225,6 +225,32 @@ check("  ولا مفاتيح فيه",
       or "ALPACA_API_KEY=\n" in tpl)
 
 
+# ═══ ٨ب) لا خدمتان تبنيان وسماً واحداً ═══
+#
+# ‏Compose يبني ما له ``build`` **بالتوازي**. وخدمتان بوسمٍ واحد
+# تحاولان كتابته في اللحظة نفسها:
+#
+#     image "market-scanner:latest": already exists
+#
+# وهذا أوقف النشر فعلاً. والصورتان متطابقتان أصلاً — السياق
+# والـDockerfile واحد، والفرق ``command`` وحده.
+_builders = {n: sv for n, sv in SVC.items() if sv.get("build")}
+_tags = [sv.get("image") for sv in _builders.values()]
+check("٨ب من يبني واحدٌ لا أكثر", len(_builders) == 1,
+      str(list(_builders)))
+check("  ولا وسمان متطابقان في البناء",
+      len(_tags) == len(set(_tags)), str(_tags))
+
+# والمجدول يشير إلى ما بناه الويب، ولا يبني
+check("  والمجدول لا يبني", "build" not in SVC["scheduler"])
+check("  ويشير إلى صورة الويب",
+      SVC["scheduler"].get("image") == SVC["web"].get("image"),
+      f"{SVC['scheduler'].get('image')} مقابل {SVC['web'].get('image')}")
+# والترتيب مقصود: Compose يبني كل ما له build قبل إنشاء أيّ
+# حاوية، والاعتماد يجعل النيّة مكتوبة لا مستنتَجة
+check("  وينتظر الويب", "web" in (SVC["scheduler"].get("depends_on") or {}))
+
+
 # ═══ ٩) دليل بورتينر يذكر ما ينكسر ═══
 pdoc = (ROOT / "docs" / "PORTAINER.md").read_text(encoding="utf-8")
 check("٩ الدليل موجود", len(pdoc) > 1500)

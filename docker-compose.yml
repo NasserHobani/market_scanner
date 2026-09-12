@@ -120,10 +120,29 @@ services:
 
   # ── المجدول ──
   scheduler:
-    build: .
+    # ═══ لا ‎build‎ هنا — والسبب دقيق ═══
+    #
+    # كانت الخدمتان تحملان ``build: .`` و``image`` **نفسه**. و‏Compose
+    # يبني ما له ``build`` **بالتوازي**، فتحاول عمليّتان كتابة الوسم
+    # نفسه في اللحظة نفسها:
+    #
+    #     image "market-scanner:latest": already exists
+    #
+    # والصورتان متطابقتان أصلاً — السياق واحد والـDockerfile واحد.
+    # الفرق بينهما ``command`` وحده. فبناءٌ واحد يكفي.
+    #
+    # و‏Compose يبني كل ما له ``build`` **قبل** أن يُنشئ أيّ حاوية،
+    # فالوسم موجودٌ محلّياً حين يأتي دور هذه الخدمة — لا تُبنى ولا
+    # تُسحَب من الشبكة.
+    #
+    # وبناؤها بوسمٍ ثانٍ كان سيصلح العطب أيضاً، لكنّه يُشغّل
+    # تثبيت pandas و numpy و LightGBM مرّتين متوازيتين على خادمٍ
+    # صغير — ضغطُ ذاكرةٍ بلا مقابل.
     image: market-scanner:latest
     restart: unless-stopped
     depends_on:
+      # ‏web يبني الصورة، وهذا ينتظرها — الترتيب مقصود لا تجميل
+      web: {condition: service_started}
       db: {condition: service_healthy}
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
