@@ -42,6 +42,21 @@ class MarketSyncConfig:
     status_path: str = "data/market_sync/status.json"
     events_path: str = "data/market_sync/events.jsonl"
     lock_dir: str = "data/market_sync/locks"
+    # ═══ متى يُعتبر القفل متروكاً ═══
+    #
+    # القفل ملفٌّ يُنشأ بـ ``O_EXCL`` ويُحذف في ``finally``. وما لا
+    # يمرّ بـ ``finally`` يترك الملفّ إلى الأبد: حاويةٌ تُقتَل،
+    # ‏docker stop عند مهلته، انقطاع كهرباء، إيقافٌ من مدير المهامّ.
+    #
+    # وأثره قاتلٌ صامت: كل مزامنةٍ تالية لذلك الزوج تنتظر ثمّ تعود
+    # ``locked`` — بلا خطأ ولا سجلّ. فتشيخ الشموع، وتُعلن البوّابة
+    # «بيانات السوق متأخرة جداً»، والسبب ملفٌّ فارغ عمره شهر.
+    #
+    # وقد وقع: ٢١٦ قفلاً عالقاً، أقدمها من ١١ أغسطس.
+    #
+    # والعشر دقائق سخيّة: مزامنة زوجٍ واحد ثوانٍ. فما تجاوزها
+    # صاحبُه ميّت بأيّ حساب.
+    lock_stale_seconds: float = 600.0
     # Prefer UI timeframes when market YAML lists only the auto-scan TF
     sync_timeframes: tuple[str, ...] = ("15m", "1h", "4h", "1d")
 

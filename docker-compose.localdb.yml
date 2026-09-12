@@ -1,26 +1,24 @@
-# ═══════════════════════════════════════════════════════════════
-#  قاعدة PostgreSQL على جهازك — للترحيل والتشغيل المحلّي
-# ═══════════════════════════════════════════════════════════════
+# Local PostgreSQL only -- for the SQLite -> Postgres migration
+# and for running the app against Postgres on your machine.
 #
 #   docker compose -f docker-compose.localdb.yml up -d
-#   docker compose -f docker-compose.localdb.yml down      # يوقف
-#   docker compose -f docker-compose.localdb.yml down -v   # ويحذف!
+#   docker compose -f docker-compose.localdb.yml down      # stop
+#   docker compose -f docker-compose.localdb.yml down -v   # and erase
 #
-# ═══ لماذا ملفٌّ مستقلّ ═══
+# Why a separate file: docker-compose.yml declares variables the
+# full stack needs, and Compose resolves the whole file before it
+# looks at the service you asked for. This one asks for nothing,
+# so the database starts with a single command.
 #
-# ‏docker-compose.yml الكامل يطلب ``DJANGO_SECRET_KEY`` و
-# ``POSTGRES_PASSWORD`` بصيغة ``${VAR:?}``. و‏compose يفسّر الملفّ
-# **كلّه** قبل أن ينظر إلى الخدمة المطلوبة — فحتى
-# ``up -d db`` وحدها تفشل إن لم تكن المتغيّرات كلّها مضبوطة.
+# Port 5433, not 5432, so it cannot collide with a PostgreSQL
+# already installed on the machine -- and so you cannot connect to
+# the wrong database while believing it is this one.
 #
-# وهذا الملفّ لا يطلب شيئاً: يشغّل القاعدة وحدها بقيمٍ افتراضية
-# صالحة للجهاز، فتبدأ الترحيل بأمرٍ واحد.
+# The password below is not a secret: 5433 is bound to 127.0.0.1
+# and nothing outside this machine can reach it. DO NOT USE THIS
+# FILE ON A SERVER.
 #
-# ═══ وكلمة المرور هنا ليست سرّاً ═══
-#
-# ‏5433 مربوطٌ بـ 127.0.0.1 — لا يصله شيء من خارج جهازك. وكتابة
-# كلمة مرورٍ معروفة هنا أوضح من إيهامٍ بسرٍّ في ملفٍّ مرفوع إلى
-# GitHub. **ولا تستعمل هذا الملفّ على خادم.**
+# Steps and troubleshooting: docs/POSTGRES.md
 
 services:
   db:
@@ -31,15 +29,8 @@ services:
       POSTGRES_DB: scanner
       POSTGRES_USER: scanner
       POSTGRES_PASSWORD: scanner_local_dev
-      # ترتيبٌ غير UTF-8 يجعل فرز الأسماء العربية عشوائياً، ولا
-      # يُغيَّر بعد الإنشاء إلّا بإعادة بناء القاعدة كلّها
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      # ═══ 5433 لا 5432 ═══
-      #
-      # كي لا يصطدم بـ PostgreSQL مثبَّتٍ على الجهاز أصلاً. والاصطدام
-      # يظهر بـ «port is already allocated» — واضحٌ لكنّه يوقفك،
-      # أو الأسوأ: تتّصل بقاعدةٍ أخرى وأنت تظنّها هذه.
       - "127.0.0.1:5433:5432"
     volumes:
       - scanner_pgdata:/var/lib/postgresql/data
@@ -50,5 +41,4 @@ services:
       retries: 20
 
 volumes:
-  # اسمٌ صريح: ``down -v`` يحذفه، والاسم يجعلك ترى ما تحذف
   scanner_pgdata:

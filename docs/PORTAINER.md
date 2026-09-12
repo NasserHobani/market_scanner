@@ -188,31 +188,26 @@ docker logs market-scanner-scheduler-1 | tail -20
 
 ## ٥) انقل بياناتك الحالية
 
-الخادم يبدأ بقاعدةٍ فارغة. ولنقل الـ٢٤٬٢٢٢ صفّاً التي عندك،
-اتّبع `docs/POSTGRES.md` للترحيل المحلّي أوّلاً، ثمّ:
+الخادم يبدأ فارغاً: قاعدةً بلا صفوف، ووحدةَ بيانات بلا شمعة.
+وعندك ٢٤٬٦٧٩ صفّاً و١٫١٢ غيغابايت من الملفّات.
+
+**الإجراء كلّه في [SHIP.md](SHIP.md).** ثلاثة أوامر:
 
 ```powershell
-pg_dump -U postgres -d scanner -Fc -f scanner.dump
-scp scanner.dump user@server:~/
+python tools_ship.py                                  # حزمة 150 م.ب
+scp -r ship user@server:~/scanner-ship
+ssh user@server 'bash ~/scanner-ship/docker-restore.sh ~/scanner-ship'
 ```
 
-وعلى الخادم:
+السكربت يوقف `web` و`scheduler`، وينسخ ما على الخادم للتراجع،
+ويستعيد، ويفكّ الشموع في الوحدة، **ثمّ يعدّ كل جدولٍ ويقارنه**
+بالعدد المتوقَّع — ويخرج بخطأ إن اختلف واحد.
 
-```bash
-docker cp ~/scanner.dump market-scanner-db-1:/tmp/
-docker exec market-scanner-db-1 pg_restore -U scanner -d scanner \
-    --no-owner --clean --if-exists /tmp/scanner.dump
-```
-
-**والشموع لا تُنقل** — ٤٤٨ ميغابايت تُبنى من جديد مع أوّل
-مزامنة. وإن أردت توفير وقت المزامنة الأولى فانسخها إلى الوحدة:
-
-```bash
-docker cp ./data/. market-scanner-web-1:/app/data/
-```
+> وشرطُه أن تكون قد رحّلت محلّياً إلى PostgreSQL أوّلاً:
+> [POSTGRES.md](POSTGRES.md).
 
 **ولا تحذف قاعدتك القديمة** حتى يعمل الخادم أسبوعاً كاملاً.
-هي سجلّ ٧١٦ صفقة وعمل أشهر.
+هي سجلّ ٧٢١ صفقة وعمل أشهر.
 
 ---
 

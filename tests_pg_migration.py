@@ -214,8 +214,12 @@ if LDB.exists():
           all(p.startswith("127.0.0.1:") for p in _ports), str(_ports))
     check("  وبترميز UTF8", "--encoding=UTF8" in _code)
     # وكلمة المرور مكشوفة عمداً — ويُقال إنّها للجهاز لا للخادم
+    # النهي بقي، لكنّه بالإنجليزية: الملفّ صار ASCII خالصاً بعد
+    # أن رفض مفسّر Go نصّاً ثنائيّ الاتجاه في ‎docker-compose.yml‎.
+    # والمطلوب أن يبقى مكتوباً، لا أن يبقى بلغةٍ بعينها.
     check("  ويُنهى عن استعماله على خادم",
-          "لا تستعمل هذا الملفّ على خادم" in _raw)
+          "DO NOT USE THIS" in _raw.upper()
+          or "لا تستعمل هذا الملفّ على خادم" in _raw)
     # والوثيقة تدلّ عليه
     check("  والوثيقة تدلّ عليه", "docker-compose.localdb.yml" in doc)
 

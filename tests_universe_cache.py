@@ -181,10 +181,41 @@ shutil.rmtree(tmp, ignore_errors=True)
 # والتنظيف بعد كل اختبار علاجٌ يعتمد على التذكّر — وقد نُسي مرّتين
 # في هذه الجلسة وحدها. فالحارس أن يُفحص **الرمز**: كل ملفّ يستدعي
 # ``usdt_universe`` يجب أن يزيح ``storage.DATA_DIR`` أوّلاً.
+#
+# ═══ ونداءٌ فعليّ لا ذكرٌ في نصّ ═══
+#
+# المطابقة على ``"usdt_universe(" in src`` أطلقت إنذارين كاذبين:
+# ملفٌّ يتحقّق من **ترتيب** الاسم في كودٍ آخر عبر ``.index(...)``،
+# وآخر يعرّف ``def usdt_universe`` في محوّلٍ مزيّف لا يلمس قرصاً.
+# وكلاهما لا يكتب شيئاً.
+#
+# والإنذار الكاذب ليس أذًى صغيراً هنا: حارسٌ يصيح بلا سبب يُطفَأ،
+# وحارسٌ مُطفَأ يساوي غيابه. فالمطابقة على شجرة الكود: ``Call``
+# اسمُها ``usdt_universe`` — لا ``FunctionDef`` ولا نصٌّ داخل
+# سلسلة.
+import ast as _ast  # noqa: E402
+
+
+def _calls_universe(src: str) -> bool:
+    try:
+        tree = _ast.parse(src)
+    except SyntaxError:
+        return "usdt_universe(" in src      # لا نُسقط الحارس بعطبِ ملفّ
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.Call):
+            continue
+        f = node.func
+        name = (f.attr if isinstance(f, _ast.Attribute)
+                else f.id if isinstance(f, _ast.Name) else "")
+        if name == "usdt_universe":
+            return True
+    return False
+
+
 _writers = []
 for _p in sorted(ROOT.glob("tests_*.py")):
     _src = _p.read_text(encoding="utf-8", errors="replace")
-    if "usdt_universe(" not in _src:
+    if not _calls_universe(_src):
         continue
     isolated = ("DATA_DIR = _TMP_DATA" in _src
                 or "patch.object(storage" in _src

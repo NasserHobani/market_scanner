@@ -2,6 +2,7 @@
 """Per-symbol/timeframe sync locks — prevent concurrent writers."""
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -11,8 +12,32 @@ from typing import Iterator
 
 from .config import DEFAULT_SYNC_CONFIG, MarketSyncConfig
 
+log = logging.getLogger(__name__)
+
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
 _META = threading.Lock()
+
+
+def clear_all(config: MarketSyncConfig = DEFAULT_SYNC_CONFIG) -> int:
+    """احذف كل الأقفال. يُنادى عند الإقلاع وحده.
+
+    لحظةُ بدء العملية هي اللحظة الوحيدة التي يُعلَم فيها يقيناً
+    أنّ لا مزامنةَ جارية — فحذفُها حينئذٍ آمنٌ بالبناء لا
+    بالتقدير. وفي أيّ وقتٍ آخر قد يكون القفل لعاملٍ يعمل.
+    """
+    d = Path(config.lock_dir)
+    if not d.is_dir():
+        return 0
+    n = 0
+    for p in d.glob("*.lock"):
+        try:
+            p.unlink()
+            n += 1
+        except OSError:
+            pass
+    if n:
+        log.info("حُذف %d قفلاً عند الإقلاع", n)
+    return n
 
 
 def _key(market: str, symbol: str, timeframe: str) -> str:
@@ -26,6 +51,34 @@ def _thread_lock(key: str) -> threading.Lock:
         return _THREAD_LOCKS[key]
 
 
+def _reclaim_if_stale(path: Path, max_age: float) -> bool:
+    """احذف قفلاً هجره صاحبه. ``True`` إن حُذف.
+
+    ═══ لماذا بالعمر لا بالـPID ═══
+
+    القفل يحمل ‏PID كاتبه، والإغراء أن يُسأل: أحيٌّ هو؟ لكنّ
+    الأرقام تُعاد داخل الحاويات — كلّ حاويةٍ فضاءٌ مستقلّ يبدأ من
+    ١. فقفلٌ كتبه ‎PID 7‎ في حاويةٍ ماتت يبدو حيّاً تماماً حين
+    يصادف ‎PID 7‎ في التي بعدها، فلا يُحرَّر أبداً.
+
+    والعمر لا يكذب: مزامنة زوجٍ واحد ثوانٍ، فما جاوز الحدّ متروك.
+    """
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:          # اختفى بيننا — وهذا نجاحٌ لا فشل
+        return True
+    if age < max_age:
+        return False
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    log.warning("قفلٌ متروك حُذف: %s (عمره %.0f دقيقة)", path.name, age / 60)
+    return True
+
+
 @contextmanager
 def sync_lock(
     market: str,
@@ -33,7 +86,13 @@ def sync_lock(
     timeframe: str,
     *,
     config: MarketSyncConfig = DEFAULT_SYNC_CONFIG,
-    timeout: float = 30.0,
+    # ═══ خمسٌ لا ثلاثون ═══
+    #
+    # القفل المشغول يعني أنّ عاملاً آخر يجلب هذا الزوج الآن —
+    # فانتظارُه لا يضيف شمعة. والثلاثون ثانية كانت تُضرَب في مئتي
+    # رمز: ساعةٌ وأربعون دقيقة من الانتظار المحض في الدورة
+    # الواحدة، وهي جزءٌ من إشباع الجدول المقيس.
+    timeout: float = 5.0,
 ) -> Iterator[bool]:
     """Acquire process + file lock. Yields True if acquired, False if busy."""
     key = _key(market, symbol, timeframe)
@@ -57,6 +116,11 @@ def sync_lock(
                 acquired = True
                 break
             except FileExistsError:
+                # المحاولة الأولى تسأل: أهو مشغول أم متروك؟ وبلا
+                # هذا السؤال ينتظر الحيُّ الميّتَ حتى المهلة، كل
+                # دورة، إلى الأبد.
+                if _reclaim_if_stale(lock_path, config.lock_stale_seconds):
+                    continue
                 time.sleep(0.05)
         if not acquired:
             yield False

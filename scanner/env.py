@@ -77,9 +77,23 @@ def load_env(path: str | Path | None = None, *, force: bool = False) -> int:
         return 0
     added = 0
     for k, v in pairs.items():
-        if k not in os.environ:
+        # ═══ الفارغ كالغائب ═══
+        #
+        # كان الشرط ``k not in os.environ`` وحده. و‏docker compose
+        # يمرّر ``FOO: ${FOO}`` غيرَ المضبوط بوصفه **سلسلةً فارغة
+        # موجودة** — لا غائباً. فيرى هذا السطر المفتاح «مضبوطاً»
+        # ويتخطّى قيمة ‎.env‎، ويبقى الفارغ.
+        #
+        # وأثره المقيس على الخادم: ``DJANGO_SECRET_KEY`` يُولَّد من
+        # جديد في **كل** تشغيل، ويُلحَق بـ‎.env‎ ولا يُقرأ منه أبداً
+        # — فينتهي كل جلسة وكل رمز CSRF مع كل أمر، والملفّ ينمو
+        # سطرين في المرّة.
+        if not os.environ.get(k, "").strip():
             os.environ[k] = v
             added += 1
+    # ‎.env‎ قد يحمل المرادف وحده — فالترجمة بعد كل تحميل لا عند
+    # الاستيراد وحده، وإلّا ضاع ما حُمِّل بـ``force`` لاحقاً.
+    apply_aliases()
     return added
 
 
@@ -113,9 +127,53 @@ def describe_key(name: str) -> str:
     return "غير مضبوط — وليس في .env"
 
 
+# ═══════════════════════════════════════════════════════════════
+#  أسماءٌ مرادفة
+# ═══════════════════════════════════════════════════════════════
+#
+# ═══ عطبٌ وقع مرّتين، وصمت في الحالتين ═══
+#
+# ‏docker-compose.yml و‎.env.docker.example‎ يمرّران أسماءً، والكود
+# يقرأ أسماءً أخرى. فالمفتاح **موجودٌ** في الحاوية ويقول النظام
+# «غير مضبوط»:
+#
+#   compose يمرّر          الكود يقرأ                 الأثر
+#   ─────────────────────  ─────────────────────────  ──────────────
+#   ALPACA_API_KEY         ALPACA_API_KEY_ID          صفر شمعة في
+#   ALPACA_SECRET_KEY      ALPACA_API_SECRET_KEY      السوق الأمريكي
+#   TELEGRAM_BOT_TOKEN     TELEGRAM_TOKEN             لا تنبيه يصل
+#
+# ولم يظهر محلّياً: ‎.env‎ على الجهاز مكتوبٌ بأسماء الكود.
+#
+# والحلّ ليس تصحيح أحد الطرفين — المستخدم قد لصق أيّهما، وتغييرُ
+# الاسم يكسر إعداداً قائماً. فالاسمان يعملان، والترجمة هنا في
+# مكانٍ واحد.
+ALIASES: dict[str, str] = {
+    "ALPACA_API_KEY": "ALPACA_API_KEY_ID",
+    "ALPACA_SECRET_KEY": "ALPACA_API_SECRET_KEY",
+    "TELEGRAM_BOT_TOKEN": "TELEGRAM_TOKEN",
+}
+
+
+def apply_aliases() -> int:
+    """يملأ الاسم القانونيّ من مرادفه. يعيد عدد ما مُلئ.
+
+    والاتّجاه واحد: المرادف يملأ القانونيّ الفارغ، ولا يدهسه. فمن
+    ضبط الاسمين معاً يفوز القانونيّ — وهو ما يتوقّعه من كتبه.
+    """
+    n = 0
+    for alias, canon in ALIASES.items():
+        val = os.environ.get(alias, "").strip()
+        if val and not os.environ.get(canon, "").strip():
+            os.environ[canon] = val
+            n += 1
+    return n
+
+
 # يُحمَّل عند استيراد ``scanner``. الوضع في الوحدة لا في دالّة
 # يُنادى من كل أداة: ما يعتمد على تذكّر المطوّر يُنسى — وقد نُسي.
 load_env()
+apply_aliases()
 
 __all__ = ["load_env", "parse_env", "env_status", "describe_key",
-           "PROJECT_ROOT"]
+           "apply_aliases", "ALIASES", "PROJECT_ROOT"]

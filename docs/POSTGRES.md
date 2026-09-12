@@ -153,20 +153,19 @@ python run_checks.py
 
 ## ٥) وإلى الخادم
 
-بعد أن تعمل محلّياً أسبوعاً:
+بعد أن تعمل محلّياً أسبوعاً — **اتبع [SHIP.md](SHIP.md)**:
 
 ```powershell
-docker exec scanner-localdb pg_dump -U scanner -d scanner -Fc > scanner.dump
-scp scanner.dump user@server:~/
+python tools_ship.py
+scp -r ship user@server:~/scanner-ship
+ssh user@server 'bash ~/scanner-ship/docker-restore.sh ~/scanner-ship'
 ```
 
-وعلى الخادم:
-
-```bash
-docker cp ~/scanner.dump market-scanner-db-1:/tmp/
-docker exec market-scanner-db-1 pg_restore -U scanner -d scanner \
-    --no-owner --clean --if-exists /tmp/scanner.dump
-```
+> نُقل هذا القسم إلى دليلٍ مستقلّ لأنّ `pg_dump` وحده لا يكفي:
+> الشموع ملفّاتٌ لا صفوف، ونقلها يحتاج وحدة التخزين لا القاعدة؛
+> و`pg_restore --clean` يخرج بخطأ على قاعدةٍ فارغة فيبدو النجاح
+> فشلاً؛ ولا شيء في الأمرين يقول إن وصل الكلّ. والسكربت هناك
+> يعدّ كل جدولٍ ويقارنه بالمتوقَّع.
 
 ---
 

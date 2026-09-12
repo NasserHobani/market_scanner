@@ -95,14 +95,27 @@ class AlpacaError(RuntimeError):
 def credentials() -> tuple[str, str]:
     """المفتاح والسرّ من البيئة.
 
-    يُقبل الاسمان: ``ALPACA_*`` (أوضح في ملف .env مشترك) و ``APCA_*``
-    (ما تستعمله أدوات Alpaca الرسمية). قبول الاثنين يوفّر على المستخدم
-    اكتشاف أيّهما نقصد بعد أن يكون قد لصق مفاتيحه بالفعل.
+    تُقبل ثلاث تسميات، وقبولها ليس ترفاً:
+
+    ``ALPACA_API_KEY_ID``  / ``ALPACA_API_SECRET_KEY``   — الأصل هنا
+    ``APCA_API_KEY_ID``    / ``APCA_API_SECRET_KEY``     — تسمية أدوات
+                                                           Alpaca الرسمية
+    ``ALPACA_API_KEY``     / ``ALPACA_SECRET_KEY``       — تسمية compose
+
+    ═══ والثالثة أُضيفت بعد عطبٍ صامت ═══
+
+    ``docker-compose.yml`` و‎.env.docker.example‎ يمرّران
+    ``ALPACA_API_KEY`` — ولم يكن يُقرأ. فكان المفتاح **موجوداً**
+    في الحاوية والمحوّل يقول «غير مضبوط»، والسوق الأمريكي بصفر
+    شمعة على خادمٍ كل شيءٍ فيه يبدو سليماً.
+
+    ولم يظهر محلّياً: ‎.env‎ على الجهاز مكتوبٌ بالتسمية الأولى.
     """
     key = (os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")
-           or "").strip()
+           or os.getenv("ALPACA_API_KEY") or "").strip()
     secret = (os.getenv("ALPACA_API_SECRET_KEY")
-              or os.getenv("APCA_API_SECRET_KEY") or "").strip()
+              or os.getenv("APCA_API_SECRET_KEY")
+              or os.getenv("ALPACA_SECRET_KEY") or "").strip()
     return key, secret
 
 
@@ -156,9 +169,13 @@ class AlpacaAdapter(MarketAdapter):
     def _headers(self) -> dict:
         if not self.key or not self.secret:
             raise AlpacaError(
-                "مفاتيح Alpaca غير مضبوطة. أضف إلى ملف .env:\n"
-                "  ALPACA_API_KEY_ID=...\n"
-                "  ALPACA_API_SECRET_KEY=...\n"
+                "مفاتيح Alpaca غير مضبوطة.\n"
+                "  محلّياً — في ملفّ .env:\n"
+                "    ALPACA_API_KEY_ID=...\n"
+                "    ALPACA_API_SECRET_KEY=...\n"
+                "  بدوكر — في Environment variables بالمكدّس:\n"
+                "    ALPACA_API_KEY=...\n"
+                "    ALPACA_SECRET_KEY=...\n"
                 "تُنشأ من لوحة Alpaca ← API Keys.")
         return {**UA, "APCA-API-KEY-ID": self.key,
                 "APCA-API-SECRET-KEY": self.secret,

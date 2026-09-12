@@ -142,19 +142,44 @@ class MarketDataSyncService:
         for s in cfg.symbols or []:
             symbols.append(s)
 
-        # Auto universe (bounded) when nothing on disk yet
-        if not symbols and getattr(cfg, "universe", "") == "auto":
+        # ═══ الاكتشاف يعمل مع البذور لا بدلاً منها ═══
+        #
+        # كان الشرط ``if not symbols`` — أي: لا تكتشف إلّا إن لم
+        # يكن هناك شيء. و``symbols`` تحمل قائمة الـYAML التي أُضيفت
+        # قبل سطرين، وفيها عشرة رموز لكريبتو وعشرة للأمريكي.
+        #
+        # فالنتيجة أنّ ``universe: auto`` **لم يعمل قطّ** لهذين
+        # السوقين: عشرة رموز، إلى الأبد، مهما كان في المنصّة.
+        #
+        # ولم يظهر على الجهاز لأنّ الملفّات المتراكمة على القرص
+        # تدخل ``symbols`` أيضاً — ٢١٠ رموز كريبتو جُمعت أيّام كانت
+        # القائمة فارغة. فبدا الاكتشاف يعمل وهو معطّل منذ أن كُتبت
+        # القائمة.
+        #
+        # وانكشف على خادمٍ نظيف: «١٠ من ١٠ رموز متأخّرة» — والعشرة
+        # هي القائمة نفسها. السوق كلّه كان عشرة رموز.
+        #
+        # فالبذور تبقى أوّلاً (أهمّ الرموز تُزامَن أوّلاً)، والمكتشَف
+        # يُضاف بعدها، والتكرار يُزال أسفلُ.
+        if getattr(cfg, "universe", "") == "auto":
             try:
                 # قد يكون الاكتشاف من محوّل آخر: سهمك يكتشف السوق
                 # السعودي مجاناً بينما ياهو يجلب شموعه مجاناً.
                 name = getattr(cfg, "universe_adapter", "") or cfg.adapter
                 adapter = get_adapter(name)
                 if hasattr(adapter, "usdt_universe"):
-                    symbols = list(adapter.usdt_universe(
+                    # المحوّلات تخبّئ الكون داخلها، فالنداء هنا لا
+                    # يعني طلباً شبكياً في كل دورة.
+                    found = list(adapter.usdt_universe(
                         cfg.min_quote_volume,
                         top_n=cfg.top_n or self.config.max_symbols_per_market,
                     ))
+                    log.info("اكتُشف %d رمزاً في %s (بذور: %d)",
+                             len(found), market, len(symbols))
+                    symbols.extend(found)
             except Exception as exc:  # noqa: BLE001
+                # والفشل لا يُفرغ القائمة: البذور تبقى، فالسوق يعمل
+                # بعشرة رموز خيرٌ من أن يتوقّف.
                 log.warning("universe resolve failed %s: %s", market, str(exc)[:120])
 
         # Dedupe preserve order
@@ -578,20 +603,53 @@ class MarketDataSyncService:
         #
         # فالحكم على ``critical`` وحده. و``missing`` يُبلَّغ ويُجلَب
         # ولا يمنع.
-        if counts["critical"] > total * 0.5:
-            if auto_refresh:
-                # الموتى لا يُلاحَقون: ملاحقتهم تعني آلاف الطلبات
-                # التي لا تعود بشمعة، وهي ما ضخّم سجلّ الأحداث إلى
-                # ٣٠٥ ميغابايت وأشغل عامل المزامنة عن الأحياء.
-                alive = [a["symbol"] for a in assessments
-                         if a["status"] != "dead"]
-                self.incremental_refresh_stale(
-                    market, timeframe, symbols=alive or syms,
-                    config_dir=config_dir,
-                )
-                return self.scan_freshness_gate(
-                    market, timeframe, symbols=syms, auto_refresh=False, config_dir=config_dir,
-                )
+        # ═══════════════════════════════════════════════════════
+        #  الاستبعاد بالرمز لا بالسوق
+        # ═══════════════════════════════════════════════════════
+        #
+        # كانت البوّابة تحجب السوق **كلّه** إن تجاوز نصفُ رموزه
+        # الحدّ. والغاية صحيحة — ألّا تُبنى توصيةٌ على سعرٍ عمره
+        # أسبوعان — لكنّ الإنفاذ كان خطأً في اتّجاهين معاً:
+        #
+        # **أقلّ أماناً.** عند ٤٩٪ حرجاً تمرّ البوّابة، فيُمسَح
+        # نصف السوق ببياناتٍ قديمة. النسبة تحمي الأغلبية وتترك
+        # الأقلّية تمرّ — والخطر في الرمز الواحد لا في النسبة.
+        #
+        # **وأقلّ نفعاً.** عند ٥١٪ تُحجب النتائج كلّها، بما فيها
+        # ٤٩ رمزاً بياناتها سليمة تماماً. صفرُ نتيجة بدل نتيجةٍ
+        # ناقصة معلومة النقص.
+        #
+        # ونظامٌ يملأ بياناته لأوّل مرّة يقع في الفخّ حتماً: كل
+        # رموزه قديمة حتى تلحقها المزامنة، فيُحجب المسح، فلا
+        # تُحفظ دورة، فتبدو اللوحة معطوبة وهي تعمل.
+        #
+        # فالقاعدة الآن: الرمز المتأخّر **لا يُمسَح**، والباقي
+        # يُمسَح، والعدد يُعلَن. ولا يُحجب السوق إلّا إن لم يبقَ
+        # رمزٌ واحد صالح — وذلك عطلٌ حقيقيّ لا إحماء.
+        if counts["critical"] and auto_refresh:
+            # الموتى لا يُلاحَقون: ملاحقتهم تعني آلاف الطلبات التي
+            # لا تعود بشمعة، وهي ما ضخّم سجلّ الأحداث إلى ٣٠٥
+            # ميغابايت وأشغل عامل المزامنة عن الأحياء.
+            alive = [a["symbol"] for a in assessments
+                     if a["status"] != "dead"]
+            self.incremental_refresh_stale(
+                market, timeframe, symbols=alive or syms,
+                config_dir=config_dir,
+            )
+            return self.scan_freshness_gate(
+                market, timeframe, symbols=syms, auto_refresh=False,
+                config_dir=config_dir,
+            )
+
+        # ``missing`` صالحٌ عمداً: لا ملفّ = لا سعرٌ قديم يُخدَع به
+        # أحد، والمسح يجلبه في السطر التالي. والحرج والميّت
+        # يُستبعدان: لهما ملفّ، وفيه سعرٌ قديم.
+        _USABLE = ("fresh", "stale", "missing")
+        usable = [a["symbol"] for a in assessments if a["status"] in _USABLE]
+        excluded = [a["symbol"] for a in assessments
+                    if a["status"] not in _USABLE]
+
+        if not usable:
             # ═══ لماذا لا يُستثنى «السوق مغلق» هنا ═══
             #
             # جرّبتُ أوّلاً أن أُمرّر الحالة إن كان السوق مغلقاً —
@@ -611,19 +669,35 @@ class MarketDataSyncService:
                 "code": "MARKET_DATA_STALE",
                 # الرقم في الرسالة لا في الحقول وحدها: «متأخرة جداً»
                 # بلا عدد لا يقول أهي ثلاثة رموز أم أربعمئة.
-                "reason": (f"بيانات السوق متأخرة جداً — {counts['critical']} "
-                           f"من {total} رمزاً متأخّرة تأخّراً حرجاً"),
+                "reason": (f"لا رمز واحد ببيانات صالحة — "
+                           f"{counts['critical']} حرجاً و{counts['dead']} "
+                           f"مشطوباً من {len(assessments)}"),
                 "counts": counts,
                 "living": living,
                 "dead": counts["dead"],
-                "living": living,
-                "dead": counts["dead"],
+                "usable": [],
+                "excluded": excluded,
                 "market_open": sessions.is_open(market),
                 "next_open": None if nxt is None else nxt.isoformat(),
                 "action": "manual_sync",
             }
 
-        if counts["stale"] or counts["missing"] or counts["critical"]:
+        if excluded:
+            return {
+                "ok": True,
+                "code": "PARTIAL",
+                "reason": (f"مُسِح {len(usable)} من {len(assessments)} رمزاً "
+                           f"· استُبعد {len(excluded)} لقِدَم بياناته"),
+                "counts": counts,
+                "living": living,
+                "dead": counts["dead"],
+                "usable": usable,
+                "excluded": excluded,
+                "fresh_ratio": round(fresh_ratio, 3),
+                "use_cached": True,
+            }
+
+        if counts["stale"] or counts["missing"]:
             if auto_refresh:
                 self.incremental_refresh_stale(
                     market, timeframe, symbols=syms, config_dir=config_dir,
@@ -635,6 +709,8 @@ class MarketDataSyncService:
                 "counts": counts,
                 "living": living,
                 "dead": counts["dead"],
+                "usable": usable,
+                "excluded": excluded,
                 "fresh_ratio": round(fresh_ratio, 3),
                 "use_cached": True,
             }
@@ -644,8 +720,10 @@ class MarketDataSyncService:
             "code": "FRESH",
             "reason": "البيانات حديثة",
             "counts": counts,
-                "living": living,
-                "dead": counts["dead"],
+            "living": living,
+            "dead": counts["dead"],
+            "usable": usable,
+            "excluded": excluded,
             "fresh_ratio": round(fresh_ratio, 3),
             "use_cached": True,
         }

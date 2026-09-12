@@ -1,62 +1,29 @@
-# ═══════════════════════════════════════════════════════════════
-#  ماسح الأسواق — ثلاث خدمات
-# ═══════════════════════════════════════════════════════════════
+# market-scanner -- three services: db, web, scheduler.
 #
-#   محلّياً:   docker compose up -d --build
-#   ببورتينر:  Stacks → Add stack → Repository → انظر docs/PORTAINER.md
+# Local:     docker compose up -d --build
+# Portainer: Stacks > Add stack > Repository
 #
-# ═══ لماذا لا ‎env_file‎ هنا ═══
+# All reasoning, trade-offs and troubleshooting live in
+# docs/PORTAINER.md. This file is kept plain ASCII on purpose:
+# it is parsed by Docker's Go YAML parser, which I cannot test
+# against from here -- so it carries no bidirectional text and
+# no comments inside block sequences.
 #
-# كان ``env_file: [.env]`` — وهو يعمل على جهازك ويُسقط كل نشرٍ من
-# مستودع Git. السبب أنّ ‎.env‎ محجوبٌ بـ ‎.gitignore‎ (وهو الصواب:
-# يحمل مفاتيح Alpaca وتيليجرام)، فلا يصل الخادم أصلاً. وبورتينر
-# يستنسخ المستودع ثمّ يشغّل compose، فيفشل بـ
-# ``env file not found`` قبل أن يبني شيئاً.
-#
-# والبديل ``${VAR}`` صريحاً: بورتينر يملؤه من واجهته، و‏compose
-# على جهازك يملؤه من ‎.env‎ **تلقائياً** (هذا سلوكه الافتراضي، ولا
-# يحتاج ``env_file``). فملفٌّ واحد يخدم الاثنين.
-#
-# وفيه فائدةٌ ثانية: ما يصل الحاوية مذكورٌ هنا بالاسم. أمّا
-# ``env_file`` فيصبّ الملفّ كلّه في بيئة كل خدمة — بما فيه ما لا
-# يلزمها.
+# Variables come from .env locally, or from the stack's
+# Environment variables in Portainer. See .env.docker.example.
 
 services:
 
-  # ── القاعدة ──
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
       POSTGRES_USER: ${POSTGRES_USER:-scanner}
-      # ═══ بلا صيغة «المطلوب» ═══
-      #
-      # كانت ``${POSTGRES_PASSWORD:?…}``. وتلك تُفحص **وقت تفسير
-      # الملفّ** — أي قبل أن يصل شيءٌ إلى أيّ حاوية. فإن لم يصل
-      # المتغيّر إلى مفسِّر compose سقط النشر كلّه برسالةٍ عن
-      # «متغيّر ناقص»، ولو كان الخطأ في **كيفية إدخاله** لا في
-      # غيابه. وهذا ما وقع في بورتينر.
-      #
-      # والتحقّق موجودٌ أصلاً في ``docker-entrypoint.sh``: هناك
-      # يقع **داخل** الحاوية، فيظهر في سجلّها برسالةٍ تقول ما
-      # يُفعل — لا في رسالة نشرٍ مقتضبة.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # ترتيبٌ غير UTF-8 يجعل فرز الأسماء العربية عشوائياً، ولا
-      # يُغيَّر بعد الإنشاء إلّا بإعادة بناء القاعدة كلّها
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # لا ‎ports‎ عمداً: القاعدة تُرى من شبكة المكدّس وحدها. ونشرها
-    # على المضيف يفتح 5432 للإنترنت — وهو أكثر ما يُمسح آلياً.
-    # ═══ الفحص للعرض لا للبوّابة ═══
-    #
-    # يُظهر حال القاعدة في بورتينر. ولا تُعلَّق عليه بقيّة الخدمات —
-    # انظر ``depends_on`` أدناه.
-    #
-    # و‏start_period طويل عمداً: أوّل إقلاع يشغّل ``initdb``، وعلى
-    # قرص خادمٍ صغير قد يتجاوز ذلك دقيقة. والمهلة القصيرة تجعل
-    # القاعدة «غير صحّية» وهي تعمل — تُنشئ نفسها فحسب.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scanner} -d ${POSTGRES_DB:-scanner}"]
       interval: 10s
@@ -64,31 +31,14 @@ services:
       retries: 12
       start_period: 90s
 
-  # ── الويب ──
   web:
     build: .
     image: market-scanner:latest
     restart: unless-stopped
     depends_on:
-      # ═══ ‎service_started‎ لا ‎service_healthy‎ ═══
-      #
-      # كان ``service_healthy``. وأثره أنّ تأخّر القاعدة — أو
-      # فشلها — يُسقط **النشر كلّه** برسالةٍ واحدة:
-      #
-      #     dependency failed to start: container ... is unhealthy
-      #
-      # ولا تقول لماذا، ولا تُقلع حاويةً يمكن قراءة سجلّها.
-      #
-      # والانتظار موجودٌ أصلاً في ``docker-entrypoint.sh``: حلقةٌ
-      # تنتظر القاعدة وتقول ما تنتظره، وتموت برسالةٍ مفهومة إن
-      # طال. فالشرط هنا كان تكراراً — ونسخته الأسوأ، لأنّها
-      # تُجهض المكدّس بدل أن تُشخّص.
-      #
-      # وهذا هو العطب نفسه الذي وقع في ``${VAR:?}``: فحصٌ مكرَّر،
-      # الخارجيّ منه يمنع الإقلاع والداخليّ يشرح.
-      db: {condition: service_started}
+      db:
+        condition: service_started
     environment:
-      # ── ما يحدّده المستخدم ──
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
       POSTGRES_USER: ${POSTGRES_USER:-scanner}
@@ -98,30 +48,14 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
       AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
-
-      # ── خلف وكيلٍ عكسيّ (Nginx Proxy Manager وغيره) ──
-      #
-      # ‏1 يجعل Django يقرأ ``X-Forwarded-Proto`` فيعرف أنّ الأصل
-      # كان HTTPS. وبلا ذلك تُفتح الصفحات ويفشل كل زرٍّ بـ 403،
-      # لأنّ ‏Django يقارن ``Origin: https://…`` بما يظنّه أصلَه.
-      #
-      # ولا تجعلها 1 بلا وكيلٍ أمامك: الترويسة تُزوَّر.
       TRUST_PROXY: ${TRUST_PROXY:-0}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
-
-      # ── المفاتيح: فارغةٌ افتراضاً، والسوق بلا مفتاح يُترك ──
-      ALPACA_API_KEY: ${ALPACA_API_KEY:-PKYMEOD7S324MYVWKZUAWEYGLE}
-      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-5aFKFZDnVu2ooMJXAvqBKwcSte4w8tcBkLDe3vFoqVrY}
-      SAHMK_API_KEY: ${SAHMK_API_KEY:-shmk_live_842a74e5570b120fe66bace8d3c444828e81faddd3c2fba4}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8952232652:AAGcgVxIqRGjaKoknDT4eAiLYT0ecBwFtP4}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-401227964}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-
-      # ── ثوابت هذه الخدمة ──
-      #
-      # ‏ready() يعمل في كل عامل gunicorn. وثلاثة عمّال بلا هذا
-      # يعني ثلاثة محرّكات على قاعدةٍ واحدة: كل مسحٍ ثلاث مرّات،
-      # وكل صفقةٍ ورقية ثلاثاً.
       SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"
@@ -129,6 +63,7 @@ services:
       COLLECT_STATIC: "1"
       SEED_JOBS: ${SEED_JOBS:-1}
     ports:
+<<<<<<< Updated upstream
       # ═══ الربط مغلقٌ افتراضاً — اقرأ قبل تغييره ═══
       #
       # لا تسجيل دخول في هذا النظام. ولا صفحة واحدة تسأل عن هويّة.
@@ -142,43 +77,26 @@ services:
       # للوصول من جهازك:  ssh -L 8000:127.0.0.1:8000 user@server
       # أو ضع وكيلاً عكسياً بكلمة مرور. انظر docs/PORTAINER.md.
       - "${WEB_PORT:-8000}"
+=======
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8000}:8000"
+>>>>>>> Stashed changes
     volumes:
-      # الشموع ولقطات الميزات — لا تدخل الصورة، وتبقى بعد كل بناء
       - appdata:/app/data
       - reports:/app/reports
     logging: &logs
       driver: json-file
-      # بلا حدٍّ يملأ السجلّ القرص خلال أسابيع — والقرص الممتلئ
-      # يوقف القاعدة، فيبدو العطب فيها لا في السجلّ
-      options: {max-size: "20m", max-file: "5"}
+      options:
+        max-size: "20m"
+        max-file: "5"
 
-  # ── المجدول ──
   scheduler:
-    # ═══ لا ‎build‎ هنا — والسبب دقيق ═══
-    #
-    # كانت الخدمتان تحملان ``build: .`` و``image`` **نفسه**. و‏Compose
-    # يبني ما له ``build`` **بالتوازي**، فتحاول عمليّتان كتابة الوسم
-    # نفسه في اللحظة نفسها:
-    #
-    #     image "market-scanner:latest": already exists
-    #
-    # والصورتان متطابقتان أصلاً — السياق واحد والـDockerfile واحد.
-    # الفرق بينهما ``command`` وحده. فبناءٌ واحد يكفي.
-    #
-    # و‏Compose يبني كل ما له ``build`` **قبل** أن يُنشئ أيّ حاوية،
-    # فالوسم موجودٌ محلّياً حين يأتي دور هذه الخدمة — لا تُبنى ولا
-    # تُسحَب من الشبكة.
-    #
-    # وبناؤها بوسمٍ ثانٍ كان سيصلح العطب أيضاً، لكنّه يُشغّل
-    # تثبيت pandas و numpy و LightGBM مرّتين متوازيتين على خادمٍ
-    # صغير — ضغطُ ذاكرةٍ بلا مقابل.
     image: market-scanner:latest
     restart: unless-stopped
     depends_on:
-      # ‏web يبني الصورة، وهذا ينتظرها — الترتيب مقصود لا تجميل
-      web: {condition: service_started}
-      # وانتظار القاعدة في نقطة الدخول لا هنا — انظر تعليق ‎web‎
-      db: {condition: service_started}
+      web:
+        condition: service_started
+      db:
+        condition: service_started
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
@@ -189,27 +107,28 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
       AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
-
-      ALPACA_API_KEY: ${ALPACA_API_KEY:-PKYMEOD7S324MYVWKZUAWEYGLE}
-      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-5aFKFZDnVu2ooMJXAvqBKwcSte4w8tcBkLDe3vFoqVrY}
-      SAHMK_API_KEY: ${SAHMK_API_KEY:-shmk_live_842a74e5570b120fe66bace8d3c444828e81faddd3c2fba4}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8952232652:AAGcgVxIqRGjaKoknDT4eAiLYT0ecBwFtP4}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-401227964}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-
-      SCHEDULER_ENGINE: "off"     # الحلقة في السكربت لا في Django
+      SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"
-      RUN_MIGRATIONS: "0"         # الويب يهاجر؛ هذا ينتظر
+      RUN_MIGRATIONS: "0"
       COLLECT_STATIC: "0"
       SEED_JOBS: "0"
       SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-60}
     command: ["/app/docker-scheduler.sh"]
-    # ═══ نسخة واحدة لا غير ═══
-    #
-    # ‏--scale scheduler=2 يشغّل كل مهمّة مرّتين. ولا يمنعه Docker،
-    # فالمنع هنا مكتوبٌ لا مضمون.
     scale: 1
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/scheduler-heartbeat -mmin -30 | grep -q ."]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
     volumes:
       - appdata:/app/data
       - reports:/app/reports

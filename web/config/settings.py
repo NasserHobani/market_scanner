@@ -43,17 +43,37 @@ def _secret_key() -> str:
     if key and key != "dev-only-change-me":
         return key
 
+    # ═══ الملفّ في ‎data/‎ لا في ‎.env‎ ═══
+    #
+    # ‎.env‎ يسكن طبقة الصورة: كل ``Pull and redeploy`` يمحوه،
+    # فيُولَّد مفتاحٌ جديد وتنتهي كل جلسة. و‎data/‎ وحدةُ تخزينٍ
+    # تبقى — وهي حيث يكتبه ``docker-entrypoint.sh`` أصلاً، فصار
+    # الطرفان يقرآن ويكتبان في مكانٍ واحد.
+    store = PROJECT_ROOT / "data" / ".django_secret_key"
+    try:
+        saved = store.read_text(encoding="utf-8").strip()
+        if saved:
+            os.environ["DJANGO_SECRET_KEY"] = saved
+            return saved
+    except OSError:
+        pass
+
     import secrets
 
     key = secrets.token_urlsafe(50)
-    env = PROJECT_ROOT / ".env"
     try:
-        with env.open("a", encoding="utf-8") as fh:
-            fh.write(f"\nDJANGO_SECRET_KEY={key}\n")
-        print(f"⚙ وُلِّد مفتاح سرّي جديد وحُفظ في {env.name}")
-    except OSError:
-        print("⚠ تعذّر حفظ المفتاح السرّي — سيتغيّر مع كل تشغيل "
-              "فتنتهي الجلسات")
+        store.parent.mkdir(parents=True, exist_ok=True)
+        # المفتاح يزوّر الجلسات ورموز CSRF لمن قرأه — ‎600‎ لا ‎644‎
+        old = os.umask(0o077)
+        try:
+            store.write_text(key + "\n", encoding="utf-8")
+        finally:
+            os.umask(old)
+        os.chmod(store, 0o600)
+        print(f"⚙ وُلِّد مفتاح سرّي جديد وحُفظ في {store}")
+    except OSError as exc:
+        print(f"⚠ تعذّر حفظ المفتاح السرّي ({exc}) — سيتغيّر مع كل "
+              "تشغيل فتنتهي الجلسات")
     os.environ["DJANGO_SECRET_KEY"] = key
     return key
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from pathlib import Path
 
 from django.db.models import Max
 from django.http import Http404, HttpResponse
@@ -281,6 +282,20 @@ def _setup_hint(market: str) -> str:
 
             key, secret = credentials()
             if not key or not secret:
+                # ═══ الإرشاد يتبع مكان التشغيل ═══
+                #
+                # «أضف إلى ملفّ ‎.env‎ في جذر المشروع» نصيحةٌ خاطئة
+                # داخل حاوية: الملفّ في طبقة الصورة، يمحوه كل
+                # ``Pull and redeploy``. فمن اتّبعها ضبط المفاتيح
+                # ثمّ فقدها عند أوّل تحديث، ولا شيء يقول لماذا.
+                if Path("/.dockerenv").exists():
+                    return ("مفاتيح Alpaca غير مضبوطة. أضفها في "
+                            "بورتينر ← Stacks ← market-scanner ← "
+                            "Environment variables: ALPACA_API_KEY و "
+                            "ALPACA_SECRET_KEY، وللحساب الورقي (مفتاح "
+                            "يبدأ بـ PK) أضف ALPACA_PAPER=1، ثم "
+                            "Update the stack. ولا تضعها في ملفّ ‎.env‎ "
+                            "داخل الحاوية — يُمحى مع كل نشر.")
                 return ("مفاتيح Alpaca غير مضبوطة. أضف إلى ملف "
                         ".env في جذر المشروع: ALPACA_API_KEY_ID و "
                         "ALPACA_API_SECRET_KEY، وللحساب الورقي "

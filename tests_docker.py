@@ -44,6 +44,12 @@ SVC = CJ["services"]
 # سطور الأمر بلا تعليقات — التعليق يشرح ولا يُنفَّذ
 df_code = "\n".join(l for l in DF.splitlines() if not l.strip().startswith("#"))
 ep_code = "\n".join(l for l in EP.splitlines() if not l.strip().startswith("#"))
+# ═══ والمجدول كذلك ═══
+#
+# فحصُ ترتيبٍ على النصّ الخامّ قارن تعليقاً بكود: رأسُ الملفّ يشرح
+# أنّه «ينادي ``run_jobs``»، فوجده الفحص قبل النبضة وأعلن الترتيب
+# مقلوباً — والكود سليم.
+sc_code = "\n".join(l for l in SC.splitlines() if not l.strip().startswith("#"))
 
 
 # ═══ ١) مجدولٌ واحد ═══
@@ -77,8 +83,16 @@ check("  وافتراضه مغلق",
 check("  ولا 0.0.0.0 مكتوباً",
       not any(p.startswith("0.0.0.0:") for p in ports), str(ports))
 check("  والقاعدة بلا منفذ على المضيف", not SVC["db"].get("ports"))
-check("  والسبب مكتوب في الملفّ",
-      "لا تسجيل دخول" in (ROOT / "docker-compose.yml").read_text(
+# ═══ والسبب في الوثيقة لا في الملفّ ═══
+#
+# كان هذا الفحص يشترط النصّ العربي **داخل** ‎docker-compose.yml‎.
+# ثمّ رفض مفسّر Go الملفّ، فصار ASCII خالصاً وانتقل الشرح إلى
+# ‎docs/‎. فالمطلوب أن يبقى التحذير مكتوباً — لا أن يبقى في مكانٍ
+# بعينه. والملفّ يدلّ عليه.
+check("  والملفّ يدلّ على الوثيقة",
+      "docs/PORTAINER.md" in _raw_compose)
+check("  والتحذير مكتوبٌ فيها",
+      "لا تسجيل دخول" in (ROOT / "docs" / "PORTAINER.md").read_text(
           encoding="utf-8"))
 doc = (ROOT / "docs" / "DOCKER.md").read_text(encoding="utf-8")
 check("  والوثيقة تبدأ بالتحذير", "لا تسجيل دخول" in doc[:900])
@@ -215,6 +229,34 @@ check("  ويسأل القاعدة", "SELECT 1" in hz)
 check("  ويردّ 503 عند عطبها", "status=503" in hz)
 # نصّ خطأ القاعدة يذكر المضيف واسمها — يُسجَّل ولا يُرسَل
 check("  ولا يكشف سبب العطب في الرد", 'HttpResponse("db' in hz)
+
+# ═══ صورةٌ واحدة، خدمتان، فحصٌ واحد ═══
+#
+# ‏HEALTHCHECK في الـDockerfile يسأل الويب على ‎127.0.0.1:8000‎،
+# ويرثه **كلّ** من يستعمل الصورة. والمجدول لا يرفع خادماً — فبقي
+# ``unhealthy`` أبداً: ١٩٨ فشلاً في ساعتين على الخادم، كلّها
+# كاذبة. وبورتينر يصبغه أحمر، فيُتعلَّم تجاهلُ اللون.
+#
+# والإطفاء يحلّ اللون ويترك المجدول بلا مراقبة. فله فحصه: نبضةٌ
+# يلمسها عند بداية كل دورة، وعمرُها هو الحكم.
+sch_hc = SVC["scheduler"].get("healthcheck")
+check("  وللمجدول فحصه الخاصّ", isinstance(sch_hc, dict) and sch_hc.get("test"))
+_t = " ".join(sch_hc.get("test", [])) if sch_hc else ""
+check("  لا يسأل الويب", "8000" not in _t and "healthz" not in _t, _t[:60])
+check("  بل عن نبضة الحلقة", "heartbeat" in _t, _t[:60])
+check("  والحلقة تلمسها", "scheduler-heartbeat" in sc_code)
+# اللمس عند **بداية** الدورة: بعدها يعني أنّ دورةً معلّقة تبدو حيّة
+check("  عند بداية الدورة",
+      0 < sc_code.find("scheduler-heartbeat") < sc_code.find("run_jobs"))
+# ودورة market_sync قِيست ١٠٣ث، وقد تطول — فالمهلة سخيّة
+check("  ومهلة البدء تسع أوّل دورة",
+      int(str(sch_hc.get("start_period", "0s")).rstrip("s")) >= 180
+      if sch_hc else False)
+# ═══ ولا ‎$‎ في سطر الفحص ═══
+#
+# ‏compose يفسّر ‎$‎ قبل أن تصل الحاوية. و``$(date +%s)`` هنا يصير
+# فراغاً، فينجح الفحص دائماً — وهو أسوأ من فشله دائماً.
+check("  وبلا ‎$‎ يبتلعه compose", "$" not in _t, _t[:60])
 urls = (ROOT / "web" / "config" / "urls.py").read_text(encoding="utf-8")
 check("  والمسار مسجَّل", "healthz" in urls)
 # قبل بقيّة المسارات: يُنادى كل ثلاثين ثانية
@@ -301,6 +343,33 @@ if _modes.strip():
     _bad = [l.split("\t")[-1] for l in _modes.strip().splitlines()
             if l.startswith("100644")]
     check("  وبتُّ التنفيذ مضبوطٌ في Git", not _bad, str(_bad))
+
+
+# ═══ ٠) ملفّات compose بلا نصٍّ ثنائيّ الاتجاه ═══
+#
+# ‏Docker يفسّر هذه الملفّات بمفسّر YAML مكتوبٍ بلغة Go، وهو غير
+# الذي أختبر به هنا. وقد رفض الملفّ فعلاً:
+#
+#     failed to parse docker-compose.yml: yaml: line 144:
+#     could not find expected ':'
+#
+# بينما قبِله ‏PyYAML بلا شكوى. فالاختبار كان يقول «سليم» والنشر
+# يسقط — وهذا أسوأ من غياب الاختبار.
+#
+# ولا أستطيع اختبار مفسّر Go من هنا، فالحلّ إزالة سبب الشكّ:
+# الملفّ ASCII خالص، بلا محارف ثنائيّة الاتجاه ولا خفيّة، وبلا
+# تعليقاتٍ داخل القوائم. والشرح كلّه في docs/.
+for _name in ("docker-compose.yml", "docker-compose.localdb.yml"):
+    _raw = (ROOT / _name).read_bytes()
+    try:
+        _raw.decode("ascii")
+        _ascii = True
+    except UnicodeDecodeError:
+        _ascii = False
+    check(f"٠ {_name} بـ ASCII خالص", _ascii)
+    check(f"  و{_name} بلا تبويبات", b"\t" not in _raw)
+    check(f"  وبلا CRLF", b"\r\n" not in _raw)
+    check(f"  وبلا BOM", not _raw.startswith(b"\xef\xbb\xbf"))
 
 
 # ═══ ٨أ) فحص الصحّة للعرض لا للبوّابة ═══

@@ -337,9 +337,25 @@ class Command(BaseCommand):
                         return
                 else:
                     use_cached = True
+                    # ═══ الاستبعاد يُنفَّذ هنا ═══
+                    #
+                    # البوّابة تقول من يصلح، وهذا السطر هو الذي
+                    # يمنع غيره من الوصول إلى المسح. وبلا تنفيذه
+                    # تصير البوّابة رأياً يُطبع ولا يُنفَّذ — أسوأ
+                    # من غيابها، لأنّها تَعِد بحمايةٍ لا تقع.
+                    usable = gate.get("usable")
+                    if usable is not None:
+                        allowed = set(usable)
+                        dropped = [s for s in symbols if s not in allowed]
+                        symbols = [s for s in symbols if s in allowed]
+                        if dropped:
+                            self.stdout.write(
+                                f"  استُبعد {len(dropped)} رمزاً لقِدَم "
+                                f"بياناته: " + " · ".join(dropped[:8])
+                                + (" …" if len(dropped) > 8 else ""))
                     self.stdout.write(
                         f"  حداثة البيانات: {gate.get('code')} "
-                        f"(cached={use_cached})")
+                        f"· {len(symbols)} رمزاً للمسح (cached={use_cached})")
             except Exception as exc:  # noqa: BLE001
                 self.stderr.write(f"  تعذّرت بوابة الحداثة: {str(exc)[:120]}")
 
