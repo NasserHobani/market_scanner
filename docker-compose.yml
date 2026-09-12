@@ -110,11 +110,11 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
 
       # ── المفاتيح: فارغةٌ افتراضاً، والسوق بلا مفتاح يُترك ──
-      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
-      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
-      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-PKYMEOD7S324MYVWKZUAWEYGLE}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-5aFKFZDnVu2ooMJXAvqBKwcSte4w8tcBkLDe3vFoqVrY}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-shmk_live_842a74e5570b120fe66bace8d3c444828e81faddd3c2fba4}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8952232652:AAGcgVxIqRGjaKoknDT4eAiLYT0ecBwFtP4}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-401227964}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
       # ── ثوابت هذه الخدمة ──
@@ -141,7 +141,11 @@ services:
       #
       # للوصول من جهازك:  ssh -L 8000:127.0.0.1:8000 user@server
       # أو ضع وكيلاً عكسياً بكلمة مرور. انظر docs/PORTAINER.md.
+<<<<<<< Updated upstream
       - "${WEB_PORT:-8001}"
+=======
+      - "${WEB_PORT:-8000}:8001"
+>>>>>>> Stashed changes
     volumes:
       # الشموع ولقطات الميزات — لا تدخل الصورة، وتبقى بعد كل بناء
       - appdata:/app/data
@@ -190,11 +194,11 @@ services:
       SCANNER_TIMEZONE: ${SCANNER_TIMEZONE:-Asia/Riyadh}
       AUTO_SCAN_MARKETS: ${AUTO_SCAN_MARKETS:-crypto,us,saudi}
 
-      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
-      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
-      SAHMK_API_KEY: ${SAHMK_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-PKYMEOD7S324MYVWKZUAWEYGLE}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-5aFKFZDnVu2ooMJXAvqBKwcSte4w8tcBkLDe3vFoqVrY}
+      SAHMK_API_KEY: ${SAHMK_API_KEY:-shmk_live_842a74e5570b120fe66bace8d3c444828e81faddd3c2fba4}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8952232652:AAGcgVxIqRGjaKoknDT4eAiLYT0ecBwFtP4}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-401227964}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
       SCHEDULER_ENGINE: "off"     # الحلقة في السكربت لا في Django
