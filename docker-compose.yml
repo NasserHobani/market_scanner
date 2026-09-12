@@ -30,8 +30,18 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
       POSTGRES_USER: ${POSTGRES_USER:-scanner}
-      # ‏:? يوقف النشر برسالةٍ واضحة بدل قاعدةٍ بلا كلمة مرور
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      # ═══ بلا صيغة «المطلوب» ═══
+      #
+      # كانت ``${POSTGRES_PASSWORD:?…}``. وتلك تُفحص **وقت تفسير
+      # الملفّ** — أي قبل أن يصل شيءٌ إلى أيّ حاوية. فإن لم يصل
+      # المتغيّر إلى مفسِّر compose سقط النشر كلّه برسالةٍ عن
+      # «متغيّر ناقص»، ولو كان الخطأ في **كيفية إدخاله** لا في
+      # غيابه. وهذا ما وقع في بورتينر.
+      #
+      # والتحقّق موجودٌ أصلاً في ``docker-entrypoint.sh``: هناك
+      # يقع **داخل** الحاوية، فيظهر في سجلّها برسالةٍ تقول ما
+      # يُفعل — لا في رسالة نشرٍ مقتضبة.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # ترتيبٌ غير UTF-8 يجعل فرز الأسماء العربية عشوائياً، ولا
       # يُغيَّر بعد الإنشاء إلّا بإعادة بناء القاعدة كلّها
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
@@ -55,10 +65,10 @@ services:
       db: {condition: service_healthy}
     environment:
       # ── ما يحدّده المستخدم ──
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?ولّده مرّة واحفظه}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
       POSTGRES_USER: ${POSTGRES_USER:-scanner}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
@@ -116,10 +126,10 @@ services:
     depends_on:
       db: {condition: service_healthy}
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?ولّده مرّة واحفظه}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB:-scanner}
       POSTGRES_USER: ${POSTGRES_USER:-scanner}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}

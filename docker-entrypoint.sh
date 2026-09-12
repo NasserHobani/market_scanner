@@ -17,12 +17,36 @@ die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 # وفي الحاوية لا ‎.env‎ يُحفظ — فيتولّد مفتاحٌ **جديد عند كل
 # إقلاع**، وتنتهي كل الجلسات ورموز CSRF بلا سبب ظاهر. وثلاثة
 # عمّال يعني ثلاثة مفاتيح مختلفة في اللحظة نفسها.
-[ -n "${DJANGO_SECRET_KEY:-}" ] || die \
-  "‏DJANGO_SECRET_KEY غير مضبوط. ولّده مرّة واحدة واحفظه في ‎.env‎:
-   python -c \"import secrets;print(secrets.token_urlsafe(50))\""
+# ═══ التحقّق هنا لا في compose ═══
+#
+# كان في ``docker-compose.yml`` بصيغة ``${VAR:?…}``. وتلك تُفحص
+# **وقت تفسير الملفّ**، أي قبل أن تُبنى صورة أو تُقلع حاوية —
+# فيسقط النشر كلّه برسالةٍ عن «متغيّر ناقص»، ولو كان الخلل في
+# **كيفية إدخاله** لا في غيابه.
+#
+# وهنا يقع الفحص داخل الحاوية: يظهر في سجلّها، ويقول ما يُفعل،
+# ولا يمنع بقيّة المكدّس من الإقلاع.
 
-[ -n "${POSTGRES_DB:-}" ] || die \
-  "‏POSTGRES_DB غير مضبوط — الصورة مبنيّة على PostgreSQL."
+missing=""
+for v in DJANGO_SECRET_KEY POSTGRES_DB POSTGRES_PASSWORD; do
+  eval "val=\${$v:-}"
+  [ -n "$val" ] || missing="$missing $v"
+done
+
+if [ -n "$missing" ]; then
+  printf '\n' >&2
+  printf '✗ متغيّرات ناقصة:%s\n' "$missing" >&2
+  printf '\n' >&2
+  printf '  محلّياً:   اكتبها في ملفّ ‎.env‎ بجوار docker-compose.yml\n' >&2
+  printf '  ببورتينر: الـStack ← Environment variables ← أضفها\n' >&2
+  printf '            ثمّ Update the stack\n' >&2
+  printf '\n' >&2
+  printf '  ولتوليد المفتاح السرّي وكلمة المرور:\n' >&2
+  printf '    python -c "import secrets;print(secrets.token_urlsafe(50))"\n' >&2
+  printf '\n' >&2
+  printf '  والقائمة كاملةً في ‎.env.docker.example‎\n' >&2
+  die "لن أُقلع بإعداداتٍ ناقصة."
+fi
 
 # ═══ ٢) انتظار القاعدة ═══
 #

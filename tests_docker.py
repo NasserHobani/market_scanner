@@ -120,10 +120,32 @@ check("  وكل متغيّر موثَّق", not (_used - _declared),
 check("  ولا موثَّقٌ مهمَل", not (_declared - _used),
       str(sorted(_declared - _used)))
 
-# والمطلوب يوقف النشر برسالةٍ بدل أن يُقلع ناقصاً
-check("  والمفتاح السرّي مطلوب", "${DJANGO_SECRET_KEY:?" in _raw_compose)
-check("  وكلمة مرور القاعدة مطلوبة",
-      "${POSTGRES_PASSWORD:?" in _raw_compose)
+# ═══ لا صيغة «المطلوب» في compose ═══
+#
+# ``${VAR:?…}`` تُفحص **وقت تفسير الملفّ** — قبل أن تُبنى صورة أو
+# تُقلع حاوية. فإن لم يصل المتغيّر إلى المفسِّر سقط النشر كلّه
+# برسالةٍ عن «متغيّر ناقص»، ولو كان الخلل في كيفية إدخاله لا في
+# غيابه. وهذا ما أوقف النشر ببورتينر فعلاً:
+#
+#   required variable POSTGRES_PASSWORD is missing a value
+#
+# والتحقّق مكانه ``docker-entrypoint.sh``: هناك يقع داخل الحاوية،
+# فيظهر في سجلّها ويقول ما يُفعل، ولا يمنع بقيّة المكدّس.
+_cc = "\n".join(l for l in _raw_compose.splitlines()
+                 if not l.strip().startswith("#"))
+check("  ولا صيغة ‎:?‎ في compose", ":?" not in _cc,
+      str([l.strip() for l in _cc.splitlines() if ":?" in l][:2]))
+
+# والتحقّق موجودٌ في نقطة الدخول، ويسمّي الناقص
+check("  والتحقّق في نقطة الدخول",
+      "متغيّرات ناقصة" in EP)
+for _v in ("DJANGO_SECRET_KEY", "POSTGRES_DB", "POSTGRES_PASSWORD"):
+    check(f"  ويشمل {_v}",
+          _v in EP.split("missing=")[1].split("if [ -n")[0])
+# ويقول أين تُكتب في الحالتين — الرسالة التي لا تقول ما يُفعل
+# تُكافئ الصمت
+check("  ويدلّ على ‎.env‎", "‎.env‎" in EP)
+check("  وعلى بورتينر", "بورتينر" in EP and "Environment variables" in EP)
 
 # ولا سرٌّ مكتوبٌ في الملفّ نفسه
 _lit = [l.strip() for l in _code.splitlines()
