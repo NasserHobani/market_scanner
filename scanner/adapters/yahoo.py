@@ -35,6 +35,25 @@ INTERVAL = {
 # أقصى مدى تسمح به Yahoo لكل فاصل
 MAX_RANGE = {"1m": "7d", "5m": "60d", "15m": "60d", "30m": "60d", "1h": "730d"}
 
+# ═══════════════════════════════════════════════════════════════
+#  فريماتٌ تُشتقّ — لأنّ Yahoo لا يعطيها
+# ═══════════════════════════════════════════════════════════════
+#
+# ‏Yahoo لا فاصلَ ‎4h‎ عنده. وكان ``fetch`` يرمي «فريم غير مدعوم»،
+# فتفشل مزامنة كل رمزٍ سعوديّ على ‎4h‎ — في كل دورة، إلى الأبد.
+#
+# وأثرُه لم يكن رسالة خطأ بل **غياباً كاملاً**: الماسحات تقرأ
+# ``stored_symbols(market, "4h")``، فالسوق السعودي كلّه — ٣٢٥
+# شركة — لم يدخل تقييم PES ولا مرّة. صفر ملفّات، صفر صفوف، ولا
+# سطر يقول لماذا.
+#
+# والاشتقاق من ‎1h‎ لا من ‎1d‎: ياهو يعطي ٧٣٠ يوماً من الساعيّ،
+# أي ما يكفي لأكثر من ألف شمعة أربع‑ساعية.
+DERIVED = {"2h": ("1h", 2), "4h": ("1h", 4), "12h": ("1h", 12)}
+
+_AGG = {"open": "first", "high": "max", "low": "min",
+        "close": "last", "volume": "sum"}
+
 
 class YahooAdapter(MarketAdapter):
     name = "yahoo"
@@ -53,6 +72,19 @@ class YahooAdapter(MarketAdapter):
     # ------------------------------------------------------------------ جلب
 
     def fetch(self, symbol: str, timeframe: str, limit: int = 1500) -> pd.DataFrame:
+        # ═══ المشتقّ قبل المباشر ═══
+        #
+        # ‎4h‎ ليست في ``INTERVAL`` ولن تكون: ياهو لا يعطيها. فتُبنى
+        # من الساعيّ هنا، ويبقى بقيّة النظام لا يعرف الفرق.
+        derived = DERIVED.get(timeframe)
+        if derived:
+            base, factor = derived
+            # هامشٌ فوق الحاجة: جلسة السوق لا تملأ كل دلوٍ أربع‑ساعيّ،
+            # فعددُ الشمعات الناتج أقلّ من القسمة النظرية.
+            raw = self.fetch(symbol, base,
+                             limit=min(limit * factor + factor * 4, 20000))
+            return self._to_derived(raw, timeframe, limit, symbol)
+
         interval = INTERVAL.get(timeframe)
         if interval is None:
             raise ValueError(f"فريم غير مدعوم في Yahoo: {timeframe}")
@@ -65,6 +97,35 @@ class YahooAdapter(MarketAdapter):
         if df is None or df.empty:
             raise RuntimeError(f"{symbol}: لا توجد بيانات (تحقق من صحة الرمز)")
         return self.validate(df.tail(limit), symbol)
+
+    def _to_derived(self, raw: pd.DataFrame, timeframe: str,
+                    limit: int, symbol: str) -> pd.DataFrame:
+        """يجمّع الساعيّ إلى الفريم المطلوب.
+
+        ═══ ``label="left"`` لا ``"right"`` ═══
+
+        شمعة ‎4h‎ تُنسَب إلى **بداية** مدّتها، كما تفعل المنصّات
+        كلّها: شمعة ‎12:00‎ تحمل ما جرى بين ‎12:00‎ و‎16:00‎. وبالنسبة
+        إلى النهاية يزيح التاريخَ أربع ساعات، فينزلق كل مؤشّرٍ
+        يُقارَن بشمعةٍ من فريمٍ آخر.
+
+        ═══ والدلاء الفارغة تُحذف ═══
+
+        السوق السعودي يعمل نحو خمس ساعات في اليوم، فأغلب دلاء
+        اليوم فارغة. و``dropna`` يزيلها — وبلاه تدخل شمعاتٌ
+        بأسعار ‎NaN‎ تُفسد كل حسابٍ بعدها بصمت.
+        """
+        if raw is None or raw.empty:
+            raise RuntimeError(f"{symbol}: لا بيانات ساعية لاشتقاق {timeframe}")
+        # ‏"4h" و"2h" و"12h" أسماءُ إزاحةٍ يفهمها pandas كما هي
+        out = (raw.resample(timeframe, label="left", closed="left")
+                  .agg(_AGG)
+                  .dropna(subset=["open", "high", "low", "close"]))
+        # حجمٌ صفر بلا سعرٍ صفر: عطلةٌ داخل الدلو، لا شمعةٌ باطلة
+        out = out[out["high"] >= out["low"]]
+        if out.empty:
+            raise RuntimeError(f"{symbol}: تعذّر اشتقاق {timeframe} من الساعيّ")
+        return self.validate(out.tail(limit), symbol)
 
     def _fetch_yfinance(self, symbol: str, interval: str, limit: int) -> pd.DataFrame:
         period = self._period_for(interval, limit)

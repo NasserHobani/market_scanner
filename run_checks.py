@@ -58,6 +58,7 @@ STEPS = [
     ("نطاق نظام البتكوين", [PY, "tests_pes_btc_scope.py"]),
     ("‏Supertrend عاملاً وخطّاً", [PY, "tests_supertrend.py"]),
     ("من الأعلى للأسفل", [PY, "tests_topdown.py"]),
+    ("‏4h مشتقّة من ياهو", [PY, "tests_yahoo_derived.py"]),
     ("سجلّ رصد PES", [PY, "tests_pes_history.py"]),
     ("امتداد فيبوناتشي", [PY, "tests_fib_extension.py"]),
     ("الفريمات: معروض ومَمسوح", [PY, "tests_timeframes.py"]),
@@ -169,6 +170,29 @@ NET_STEPS = [
     ("عوامل AIA-10", [PY, "tests_ai_aia10_features.py"]),
     ("التشابه", [PY, "tests_similarity.py"]),
 ]
+
+# ═══ الفواحص ليست في صورة Docker ═══
+#
+# ‏.dockerignore يستثني ``tests_*.py`` و``tools_*.py`` عمداً —
+# لا محلّ لها على خادم. لكنّ هذا الملفّ **يدخل** الصورة (اسمه لا
+# يطابق النمطين)، فصار سكربتاً لا يمكنه إلّا أن يفشل هناك: خمسون
+# سطراً أحمر كلّها ``No such file``، ولا سطر يقول لماذا.
+#
+# وقائمةٌ حمراء بالكامل تُقرأ «النظام معطوب» لا «أنت في المكان
+# الخطأ». فالتحقّق مرّةً قبل البدء، برسالةٍ تقول أين يُشغَّل.
+_targets = [c[1] for _, c in STEPS if len(c) > 1 and str(c[1]).endswith(".py")]
+_present = [t for t in _targets if (ROOT / t).exists()]
+if len(_present) < max(1, len(_targets) // 2):
+    print("✗ ملفّات الفواحص غير موجودة هنا "
+          f"({len(_present)} من {len(_targets)}).")
+    print()
+    print("  وهذا متوقَّع داخل حاوية Docker: ‎.dockerignore‎ يستثني")
+    print("  ‎tests_*.py‎ و‎tools_*.py‎ من الصورة عمداً — لا محلّ لها")
+    print("  على خادم.")
+    print()
+    print("  شغّلها على جهازك من جذر المشروع:")
+    print("      python run_checks.py")
+    sys.exit(2)
 
 steps = list(STEPS)
 if "--net" in sys.argv:
