@@ -15,6 +15,7 @@ from . import block_views
 from . import pes_history_views
 from . import paper_views
 from . import pes_views
+from . import topdown_views
 from . import squeeze_views
 from . import golden_views
 from . import job_views
@@ -62,6 +63,12 @@ urlpatterns = [
     path("pes/", pes_views.pes_page, name="pes"),
     path("api/pes/", pes_views.api_pes, name="api_pes"),
     path("api/pes/refresh/", pes_views.api_pes_refresh, name="api_pes_refresh"),
+    # ═══ من الأعلى للأسفل: أسبوعيّ ← يوميّ ← 4س ═══
+    path("topdown/", topdown_views.topdown_page, name="topdown"),
+    path("api/topdown/", topdown_views.api_topdown, name="api_topdown"),
+    path("api/topdown/refresh/", topdown_views.api_topdown_refresh,
+         name="api_topdown_refresh"),
+
     # سجلّ الرصد: متى رُصد الرمز وماذا جرى بعده
     path("pes/history/", pes_history_views.history_page, name="pes_history"),
     path("api/pes/history/", pes_history_views.api_pes_history,

@@ -86,12 +86,21 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
     p = params or pes.load_params()
     prev = _previous_states(market)
 
-    # نظام BTC يُحسب مرّة: مشترك بين كل الرموز
+    # ═══ نظام BTC للكريبتو وحده ═══
+    #
+    # يُحسب مرّة ويُشارَك بين رموز السوق الرقميّ. وكان يُحسب لكل
+    # سوق: شموع BTCUSDT تُقرأ من القرص لتقييم سهمٍ سعوديّ، فتتحرّك
+    # درجتُه عشر نقاطٍ بحركة عملةٍ لا تربطه بها رابطة، وتهبط ثقتُه
+    # إلى ٠٫٤ لأنّ البتكوين هابط.
+    #
+    # والقطع هنا — عند المصدر — لا في ``evaluate`` وحدها: ما لا
+    # يُقرأ لا يُسرَّب.
     btc = {}
-    try:
-        btc = pes.btc_regime(storage.load("crypto", "BTCUSDT", "1d"))
-    except Exception:  # noqa: BLE001
-        log.warning("تعذّر حساب نظام BTC")
+    if market in pes.BTC_MARKETS:
+        try:
+            btc = pes.btc_regime(storage.load("crypto", "BTCUSDT", "1d"))
+        except Exception:  # noqa: BLE001
+            log.warning("تعذّر حساب نظام BTC")
 
     symbols = storage.stored_symbols(market, "4h")
     if limit:
@@ -140,7 +149,7 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
                 pass
 
         try:
-            res = pes.evaluate(frames, btc=btc, params=p)
+            res = pes.evaluate(frames, btc=btc, params=p, market=market)
             cls = pes.classify(res, frames["4h"], previous=prev.get(sym, ""),
                                params=p)
         except Exception as exc:  # noqa: BLE001
@@ -166,6 +175,14 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
             "resistance": cls.get("resistance_level"),
             "distance": cls.get("resistance_distance"),
             "breakout": cls.get("breakout") or {},
+            # ═══ ‏Supertrend مختصراً ═══
+            #
+            # الاتّجاه وعمر الانقلاب وحدهما — لا الخطّ ولا سلسلته.
+            # الشاشة تعرض هذين، والخطّ يُرسم على شارت الرمز حيث
+            # يُحسب على نافذة العرض لا على آخر شمعة.
+            "supertrend": next(
+                (f.get("supertrend") or {} for f in res["factors"]
+                 if f["key"] == "supertrend"), {}),
             # ═══ التقاء الزخم — مختصراً لا كاملاً ═══
             #
             # المخرَج الكامل يحمل سلاسل MACD وStochRSI، وحفظُه لكل

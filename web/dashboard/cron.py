@@ -374,6 +374,35 @@ def _h_pes(payload: dict) -> str:
     return f"{done} سوق" + (f" · {tail}" if tail else " · لا إشارة")
 
 
+def _h_topdown(payload: dict) -> str:
+    """المسح من الأعلى للأسفل: أسبوعيّ ← يوميّ ← 4س.
+
+    مستقلٌّ عن ``_h_pes`` عمداً: الأسبوعيّ يتغيّر مرّةً في الأسبوع،
+    فلا معنى لإعادة حسابه كل ربع ساعة مع المسح. وفترته تُضبط من
+    ‎/jobs/‎ — والجدول مُشبَع أصلاً، فإضافةُ مهمّةٍ بفترةٍ قصيرة
+    تزيده إشباعاً.
+    """
+    from scanner.strategies import topdown_scan
+
+    from .views import MARKETS
+
+    markets = payload.get("markets") or list(MARKETS)
+    done, ready, failed = 0, 0, []
+    for m in markets:
+        try:
+            out = topdown_scan.scan(m)
+            done += 1
+            ready += len(out.get("ready") or [])
+        except Exception as exc:  # noqa: BLE001
+            failed.append(m)
+            log.warning("تعذّر المسح من الأعلى للأسفل %s: %s",
+                        m, str(exc)[:120])
+    if not done:
+        raise RuntimeError("لم يكتمل أيّ مسح")
+    return (f"{done} سوق · جاهز {ready}"
+            + (f" · فشل {'، '.join(failed)}" if failed else ""))
+
+
 def _h_paper(payload: dict) -> str:
     """دورة المحفظة الورقية: تقييمٌ ثمّ فتح."""
     from . import paper_engine
@@ -389,6 +418,7 @@ HANDLERS = {
     "scan": _h_scan,
     "paper": _h_paper,
     "pes": _h_pes,
+    "topdown": _h_topdown,
     "squeeze": _h_squeeze,
     "train_predictor": _h_train,
     "market_sync": _h_market_sync,
@@ -402,6 +432,7 @@ HANDLER_LABELS = {
     "squeeze": "قياس الانضغاط",
     "paper": "دورة المحفظة الورقية",
     "pes": "مسح ما قبل الانفجار",
+    "topdown": "المسح من الأعلى للأسفل",
     "train_predictor": "تدريب نموذج التنبؤ",
     "market_sync": "مزامنة الشموع",
     "watch_monitor": "مراقبة الفرص",
@@ -723,6 +754,18 @@ def default_jobs() -> list[dict]:
         "interval_number": 1, "interval_type": "hours",
         "payload": {}, "priority": 25,
         "active": os.environ.get("PES_SCAN", "1") == "1",
+    })
+    # ═══ أربع ساعات لا ساعة ═══
+    #
+    # الانحياز الأسبوعيّ يتغيّر مرّةً في الأسبوع، واليوميّ مرّةً في
+    # اليوم. فحسابُهما كل ساعة عملٌ مكرّر على جدولٍ مُشبَعٍ أصلاً
+    # — والـ4س هي أسرع ما في الشاشة، وشمعتُها أربع ساعات.
+    jobs.append({
+        "code": "topdown", "handler": "topdown",
+        "name": "المسح من الأعلى للأسفل",
+        "interval_number": 4, "interval_type": "hours",
+        "payload": {}, "priority": 24,
+        "active": os.environ.get("TOPDOWN_SCAN", "1") == "1",
     })
     jobs.append({
         "code": "squeeze", "handler": "squeeze",

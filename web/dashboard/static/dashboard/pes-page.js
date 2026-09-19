@@ -54,6 +54,29 @@
     }).join("");
   }
 
+  /* ═══ عمود Supertrend ═══
+   *
+   * الاتّجاه وعمر الانقلاب معاً. والعمر هو المقصود: «صاعد» يقولها
+   * ‏EMA و‏ADX أيضاً، أمّا «صاعد منذ شمعتين» فتوقيتٌ لا يعطيه
+   * غيره — وهي المرحلة التي تبحث عنها الاستراتيجية.
+   *
+   * والقديم يُكتب بلا لون: اتجاهٌ عمره أربعون شمعة صاعدٌ صحيح،
+   * والدخول فيه مطاردة. فلا يُصبَغ أخضرَ يغري.
+   */
+  function stCell(r) {
+    var s = r.supertrend || {};
+    if (!s.direction) return '<td class="small muted">—</td>';
+    var up = s.direction > 0;
+    var bars = s.bars_since_flip;
+    var fresh = up && bars !== null && bars !== undefined && bars <= 8;
+    var color = up ? (fresh ? "var(--ds-ok, #3ddc97)" : "inherit")
+                   : "var(--ds-danger, #ff6b6b)";
+    var age = (bars === null || bars === undefined) ? "" :
+      ' <span class="muted">' + bars + "ش</span>";
+    return '<td class="small" style="color:' + color + '">' +
+      (up ? "▲" : "▼") + age + "</td>";
+  }
+
   function row(r) {
     var tone = TONE[r.state] || TONE.NONE;
     var conf = r.confidence < 1
@@ -64,6 +87,7 @@
       "<td><a href='/symbol/" + esc(r.market) + "/" + esc(r.symbol) +
         "/?tf=4h'><b>" + esc(r.symbol) + "</b></a></td>" +
       '<td class="num">' + r.score + "</td>" +
+      stCell(r) +
       '<td class="num">' + (r.distance === null || r.distance === undefined
         ? "—" : r.distance + "٪") + "</td>" +
       '<td class="small">' + r.family_count + "</td>" +
@@ -80,10 +104,19 @@
     var counts = Object.keys(g.by_state || {}).filter(function (k) {
       return k !== "NONE";
     }).map(function (k) { return k + " " + g.by_state[k]; }).join(" · ");
+    // ═══ شارة BTC للسوق الرقميّ وحده ═══
+    //
+    // كانت تُطبع في رأس كل سوق، فيقرأ صاحب السهم السعودي «BTC
+    // هابط» فوق قائمته ويظنّ أنّها تخصّه. ولم تكن زينة: العامل
+    // كان يدخل الدرجة فعلاً.
+    //
+    // والشرط على ``label`` لا على وجود الكائن: المسح القديم
+    // المخزَّن يحمل ``btc`` لكل سوق حتى يُعاد.
+    var btcChip = btc && btc.label
+      ? " · BTC " + esc(btc.label) + " (" + (btc.score || 0) + "/10)" : "";
     var head = '<section class="ds-card mb-4"><div class="ds-card__head">' +
       '<h3 class="ds-card__title">' + esc(g.market) + "</h3>" +
-      '<span class="ds-card__meta">' + g.evaluated + " رمزاً · BTC " +
-        esc(btc.label || "—") + " (" + (btc.score || 0) + "/10)" +
+      '<span class="ds-card__meta">' + g.evaluated + " رمزاً" + btcChip +
         (counts ? " · " + counts : "") + stale + "</span></div>";
     if (!g.rows.length) {
       return head + '<div class="p-3"><p class="small muted">' +
@@ -91,7 +124,9 @@
     }
     return head + '<div class="p-3"><div class="table-responsive">' +
       '<table class="table table-sm align-middle mb-0"><thead><tr>' +
-      "<th>المرحلة</th><th>الرمز</th><th>النقاط</th><th>للمقاومة</th>" +
+      "<th>المرحلة</th><th>الرمز</th><th>النقاط</th>" +
+      '<th title="الاتّجاه وعمر الانقلاب بالشمعات">Supertrend</th>' +
+      "<th>للمقاومة</th>" +
       "<th>عائلات</th><th>السبب</th><th></th>" +
       "</tr></thead><tbody>" + g.rows.map(row).join("") +
       "</tbody></table></div>" +
@@ -124,11 +159,18 @@
           actions: [{ href: "/jobs/", label: "المهامّ", primary: true }],
           inline: true,
         });
+        // ═══ من مجموعة الكريبتو لا من الأولى ═══
+        //
+        // كان يأخذ ``groups[0]`` — أيّاً كان ترتيبها. فإن جاء
+        // السعودي أوّلاً عُرض نظامُ BTC كأنّه سياق تلك الصفحة.
         var btcEl = document.getElementById("pes-btc");
-        var first = (d.groups || [])[0];
-        if (btcEl && first && first.btc) {
-          btcEl.textContent = "نظام BTC: " + (first.btc.label || "—") +
-            " (" + (first.btc.score || 0) + "/10)";
+        var cg = (d.groups || []).filter(function (g) {
+          return g.btc && g.btc.label;
+        })[0];
+        if (btcEl) {
+          btcEl.textContent = cg
+            ? "نظام BTC: " + cg.btc.label + " (" + (cg.btc.score || 0) + "/10)"
+            : "";
         }
       });
   }

@@ -816,6 +816,32 @@ def api_chart(request, market: str, symbol: str):
             payload["oscillators"] = {"ok": False,
                                       "reason": "تعذّر الحساب"}
 
+        # ═══ خطّ Supertrend على فريم الشاشة ═══
+        #
+        # على الفريم المعروض لا على اليوميّ دائماً: المؤشّر على
+        # الشارت يجب أن يوافق ما تحته. ومقاطعُه ملوّنة بالاتجاه،
+        # في طبقةٍ مستقلّة تُطفأ بنقرة.
+        #
+        # وفشلُه لا يُسقط الصفحة — كبقيّة الطبقات.
+        try:
+            from scanner.analysis.supertrend_layer import build as build_st
+            from scanner.strategies.pes import load_params as _pes_params
+
+            _stcfg = (_pes_params().get("supertrend") or {})
+            _first = (payload.get("candles") or [{}])[0].get("time")
+            st_layer = build_st(
+                df, since_ts=_first,
+                length=int(_stcfg.get("length", 10)),
+                mult=float(_stcfg.get("multiplier", 3.0)))
+            payload["supertrend"] = {k: v for k, v in st_layer.items()
+                                     if k != "lines"}
+            for ln in st_layer.get("lines") or []:
+                payload.setdefault("lines", []).append(ln)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("تعذّر رسم Supertrend لـ %s: %s",
+                        symbol, str(exc)[:160])
+            payload["supertrend"] = {"ok": False, "reason": "تعذّر الحساب"}
+
         # ═══ امتداد فيبوناتشي المبني على الاتجاه ═══
         #
         # يُرسم كما يُرسم في TradingView: خطٌّ يصل النقاط الثلاث،

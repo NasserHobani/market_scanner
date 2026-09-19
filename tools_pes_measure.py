@@ -62,11 +62,14 @@ def main() -> int:
     market, limit = args.market, args.limit
 
     params = pes.load_params()
+    # نظام BTC للسوق الرقميّ وحده — وإلّا قِيست درجاتٌ سعودية
+    # مشوبةٌ بحركة عملةٍ لا تربطها بها رابطة، وبُني عليها حكم.
     btc = None
-    try:
-        btc = pes.btc_regime(storage.load("crypto", "BTCUSDT", "1d"))
-    except Exception:  # noqa: BLE001
-        pass
+    if market in pes.BTC_MARKETS:
+        try:
+            btc = pes.btc_regime(storage.load("crypto", "BTCUSDT", "1d"))
+        except Exception:  # noqa: BLE001
+            pass
 
     symbols = storage.stored_symbols(market, "4h")[:limit]
     stats = {b: [0, 0] for b in BUCKETS}      # [حالات, تمدّدات]
@@ -116,7 +119,8 @@ def main() -> int:
             # التقييم على الشموع حتى ‏i فقط — لا نظر إلى الأمام
             try:
                 res = pes.evaluate({"4h": h4.iloc[: i + 1],
-                                    "1d": d1}, btc=btc, params=params)
+                                    "1d": d1}, btc=btc, params=params,
+                                   market=market)
             except Exception:  # noqa: BLE001
                 continue
             sc = res["score"]

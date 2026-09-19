@@ -1,0 +1,68 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}من الأعلى للأسفل · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>من الأعلى للأسفل</h1>
+    <p>الأسبوعيّ يأذن ← اليوميّ يوافق ← الـ4 ساعات يوقّت</p>
+  </div>
+</header>
+
+{% comment %}
+  الشاشة وصفٌ لا حكم. ولم يُقَس أثر هذا الترتيب على الصفقات
+  المحسومة بعد — فلا تُنتج توصيةً ولا تدخل تقييم PES، والتصريح
+  بذلك هنا أصدق من تركه يُفهَم ضمناً.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">الاتّجاه من فوق، والتوقيت من تحت</p>
+    <p class="ds-insight__text">
+      الأسبوعيّ والـيوميّ يقولان <strong>هل نشتري أصلاً</strong>،
+      والـ4 ساعات تقول <strong>متى</strong>. والدخول المطلوب بعد
+      ارتدادٍ إلى المتوسّط ثمّ استئناف — لا عند القمّة: الوقف حينها
+      تحت الارتداد مباشرةً، فالخطأ يظهر بسرعة ورخيصاً.
+      <br>
+      <span class="ds-text-muted">وهذه الشاشة لم تُقَس على صفقاتك
+      بعد — تعرض وتشرح، ولا تُصدر توصية.</span>
+    </p>
+  </div>
+</div>
+
+<form class="ds-filterbar" onsubmit="return false">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">المرحلة</span>
+    <select class="ds-input" style="width:14rem" id="f-stage">
+      <option value="">الجاهز ومن ينتظر الارتداد</option>
+      {% for s in stages %}
+        <option value="{{ s.key }}">{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+          id="apply">اعرض</button>
+</form>
+
+<div id="td-body"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/topdown-page.js' %}"></script>
+{% endblock %}

@@ -102,6 +102,64 @@ def supertrend(df: pd.DataFrame, length: int = 10,
                         index=df.index)
 
 
+def supertrend_state(df: pd.DataFrame, length: int = 10,
+                     mult: float = 3.0) -> dict:
+    """حالة Supertrend عند آخر شمعة **مغلقة**.
+
+    ═══ لماذا عمر الانقلاب لا الاتجاه وحده ═══
+
+    «صاعد» تقولها الخطوط الثلاثة — ‏EMA و‏ADX و‏Supertrend — فلا
+    تضيف الثالثة شيئاً على الأوليين. لكنّ **متى انقلب** معلومةٌ لا
+    يعطيها أيٌّ منها:
+
+        انقلب قبل شمعتين   بدايةُ اتجاه — وهي المرحلة المقصودة
+        انقلب قبل ٤٠ شمعة  اتجاهٌ نضج — والدخول فيه مطاردة
+
+    والبعد عن الخطّ يقول كم يكلّف الوقف: سعرٌ التصق بخطّه وقفُه
+    قريب، وسعرٌ ابتعد عنه ٪١٥ يدفع ثمناً كبيراً ليُثبت خطأه.
+
+    ═══ والشمعة الجارية تُسقَط ═══
+
+    ‏Supertrend يعيد رسم حدّه مع كل تكّة حتى تُغلق الشمعة. والقراءة
+    من ``iloc[-1]`` تعطي انقلاباً يظهر ويختفي — اختبارٌ خلفيّ
+    ممتاز وتطبيقٌ عاجز.
+    """
+    out = {"usable": False, "direction": 0, "line": None,
+           "bars_since_flip": None, "distance_pct": None, "flipped_up": False}
+    if df is None or len(df) < length + 3:
+        return out
+    st = supertrend(df, length, mult)
+    # ‎-2‎ لا ‎-1‎: الأخيرة جارية
+    d = st["direction"].to_numpy()[:-1]
+    line = st["supertrend"].to_numpy()[:-1]
+    close = df["close"].astype(float).to_numpy()[:-1]
+    if len(d) < 2 or not np.isfinite(line[-1]):
+        return out
+
+    cur = int(d[-1])
+    # كم شمعةً مضت على آخر تغيّر في الاتجاه
+    bars = 0
+    for i in range(len(d) - 1, 0, -1):
+        if int(d[i]) != int(d[i - 1]):
+            break
+        bars += 1
+
+    px = float(close[-1])
+    ln = float(line[-1])
+    dist = (px - ln) / ln * 100.0 if ln else None
+
+    out.update(
+        usable=True,
+        direction=cur,
+        line=round(ln, 8),
+        bars_since_flip=int(bars),
+        distance_pct=None if dist is None else round(dist, 2),
+        # انقلابٌ صاعد جديد: الاتجاه صاعد ولم يمضِ عليه إلّا قليل
+        flipped_up=bool(cur > 0 and bars <= 3),
+    )
+    return out
+
+
 def slope(series: pd.Series, window: int = 5) -> float:
     """ميل آخر ``window`` قيمة — بالانحدار لا بالطرح.
 
@@ -130,4 +188,4 @@ def rising(series: pd.Series, window: int = 5, *,
     return slope(series, window) > min_slope
 
 
-__all__ = ["adx", "macd", "supertrend", "slope", "rising"]
+__all__ = ["adx", "macd", "supertrend", "supertrend_state", "slope", "rising"]

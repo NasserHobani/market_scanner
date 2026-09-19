@@ -52,6 +52,9 @@ FAMILY = {
     "daily_trend": "trend",
     "h4_trend": "trend",
     "adx": "trend",
+    # ‏Supertrend اتجاهٌ كغيره — وعائلته تمنعه من التصويت مرّتين
+    # مع ‏EMA و‏ADX مهما بلغ وزنه.
+    "supertrend": "trend",
     "compression": "volatility",
     "volume": "volume",
     "obv": "volume",
@@ -182,7 +185,6 @@ def btc_regime(df_1d: pd.DataFrame) -> dict:
 
 def _f_daily_trend(d1: pd.DataFrame, w: float, p: dict) -> dict:
     from scanner.indicators.pine import ema, rsi
-    from scanner.indicators.trend import supertrend
 
     df = _closed(d1)
     if df is None or len(df) < 60:
@@ -190,25 +192,100 @@ def _f_daily_trend(d1: pd.DataFrame, w: float, p: dict) -> dict:
     close = df["close"].astype(float)
     e20, e50 = ema(close, 20), ema(close, 50)
     c = float(close.iloc[-1])
-    st = supertrend(df)
     r = float(rsi(close, 14).iloc[-1])
     ext = (c - float(e20.iloc[-1])) / float(e20.iloc[-1]) * 100
 
+    # ═══ ‏Supertrend خرج من هنا ═══
+    #
+    # كان فحصاً بوزن ٠٫٢٥ داخل هذا العامل. وصار عاملاً مستقلّاً
+    # له عموده على الشاشة — فبقاؤه هنا عدٌّ مزدوج للشيء نفسه.
+    # والحصص أُعيد ضبطها لتجمع واحداً بلا نقصان.
     checks = [
-        ("السعر فوق EMA50", c > float(e50.iloc[-1]), 0.30),
-        ("EMA20 فوق EMA50", float(e20.iloc[-1]) > float(e50.iloc[-1]), 0.25),
-        ("Supertrend صاعد", float(st["direction"].iloc[-1]) > 0, 0.25),
-        ("RSI بين 50 و68", 50 <= r <= 68, 0.10),
+        ("السعر فوق EMA50", c > float(e50.iloc[-1]), 0.40),
+        ("EMA20 فوق EMA50", float(e20.iloc[-1]) > float(e50.iloc[-1]), 0.30),
+        ("RSI بين 50 و68", 50 <= r <= 68, 0.15),
         # ═══ الابتعاد يخصم ═══
         # سعرٌ ابتعد عن متوسّطه ارتفع بالفعل — وهذا ليس «ما قبل».
         ("قريب من EMA20",
          ext <= float((p.get("anti_chasing") or {}).get(
-             "max_ext_above_ema20", 12.0)), 0.10),
+             "max_ext_above_ema20", 12.0)), 0.15),
     ]
     got = sum(w * frac for _, ok, frac in checks if ok)
     return {"key": "daily_trend", "family": FAMILY["daily_trend"],
             "points": round(got, 2), "max": w,
             "detail": f"RSI {r:.0f} · بُعد عن EMA20 {ext:+.1f}٪",
+            "checks": [{"name": n, "ok": bool(o)} for n, o, _ in checks]}
+
+
+def _f_supertrend(frames: dict, w: float, p: dict) -> dict:
+    """‏Supertrend على فريم المسح واليوميّ — والوزن للتوقيت لا للاتجاه.
+
+    ═══ ما الذي يضيفه فعلاً (المادّة ١٧) ═══
+
+    «صاعد» يقولها ‏EMA و‏ADX أيضاً، فلا تُشترى مرّتين. فأكثر الوزن
+    هنا على ما **لا** يقولانه:
+
+        ٠٫٢٥  اتجاه فريم المسح صاعد        ← مشترَك، فحصّته صغيرة
+        ٠٫٢٠  واليوميّ يوافقه               ← اتّفاق الفريمين
+        ٠٫٣٥  الانقلاب حديث (≤ ٨ شموع)     ← توقيتٌ لا يعطيه غيره
+        ٠٫٢٠  السعر قريب من الخطّ           ← كلفة الوقف
+
+    والمرحلة المقصودة «ما قبل الانفجار»: اتجاهٌ **بدأ للتوّ**.
+    واتجاهٌ عمره أربعون شمعة صاعدٌ صحيح — والدخول فيه مطاردة.
+
+    وعائلته ``trend``، ووزنه اقتُطع من ``daily_trend`` و‏``h4_trend``
+    فمجموع العائلة لم يتغيّر: رفعُه كان سيجعل الاتجاه يصوّت أكثر،
+    وهو ما تمنعه القاعدة ١٧ نفسها.
+    """
+    from scanner.indicators.trend import supertrend_state
+
+    cfg = p.get("supertrend") or {}
+    length = int(cfg.get("length", 10))
+    mult = float(cfg.get("multiplier", 3.0))
+    fresh_max = int(cfg.get("fresh_flip_bars", 8))
+    near_pct = float(cfg.get("near_line_pct", 6.0))
+
+    # ═══ فريم المسح هو الأصل ═══
+    #
+    # الشاشة تعرض ‎4h‎ افتراضاً، والعامل يجب أن يوافق ما يراه
+    # المستخدم. وإلّا قرأ «Supertrend صاعد» في عمودٍ يقيس اليوميّ
+    # بينما شارتُه يقول غير ذلك.
+    scan_tf = "4h" if frames.get("4h") is not None else "1d"
+    st = supertrend_state(frames.get(scan_tf), length, mult)
+    if not st["usable"]:
+        return _na("supertrend", w, "شموع غير كافية لـ Supertrend")
+
+    st_d = supertrend_state(frames.get("1d"), length, mult)
+    bars = st["bars_since_flip"]
+    dist = st["distance_pct"]
+
+    up = st["direction"] > 0
+    checks = [
+        (f"اتجاه {scan_tf} صاعد", up, 0.25),
+        ("واليوميّ يوافقه", up and st_d["usable"] and st_d["direction"] > 0,
+         0.20),
+        (f"انقلابٌ حديث (≤{fresh_max} شمعة)",
+         up and bars is not None and bars <= fresh_max, 0.35),
+        (f"السعر قريب من الخطّ (≤{near_pct:.0f}٪)",
+         up and dist is not None and 0 <= dist <= near_pct, 0.20),
+    ]
+    got = sum(w * frac for _, ok, frac in checks if ok)
+
+    label = ("صاعد" if up else "هابط")
+    age = "—" if bars is None else f"{bars} شمعة"
+    return {"key": "supertrend", "family": FAMILY["supertrend"],
+            "points": round(got, 2), "max": w,
+            "detail": f"{scan_tf} {label} · منذ {age}"
+                      + ("" if dist is None else f" · بعدٌ {dist:+.1f}٪"),
+            "supertrend": {
+                "timeframe": scan_tf,
+                "direction": st["direction"],
+                "line": st["line"],
+                "bars_since_flip": bars,
+                "distance_pct": dist,
+                "flipped_up": st["flipped_up"],
+                "daily_direction": st_d["direction"] if st_d["usable"] else 0,
+            },
             "checks": [{"name": n, "ok": bool(o)} for n, o, _ in checks]}
 
 
@@ -538,11 +615,53 @@ def already_expanded(d1: pd.DataFrame, h4: pd.DataFrame, p: dict) -> dict:
 
 # ═══════════════════════ ٤) التقييم ═══════════════════════
 
+#: الأسواق التي يعني فيها نظام البتكوين شيئاً.
+#
+# ═══ لماذا قائمة لا شرطٌ على الاسم ═══
+#
+# ``market == "crypto"`` يكسر بصمت لو أُضيف سوقٌ رقميّ ثانٍ باسمٍ
+# آخر. والقائمة تُقرأ وتُعدَّل، والاسم غير المذكور فيها **لا**
+# يُحسب له نظام BTC — وهو الافتراض الآمن.
+BTC_MARKETS = frozenset({"crypto"})
+
+
 def evaluate(frames: dict, *, btc: dict | None = None,
-             params: dict | None = None) -> dict:
-    """يقيّم رمزاً واحداً — ويعيد النقاط وتفصيلها وعائلاتها."""
+             params: dict | None = None, market: str = "crypto") -> dict:
+    """يقيّم رمزاً واحداً — ويعيد النقاط وتفصيلها وعائلاتها.
+
+    ═══ ``market`` وأثره ═══
+
+    نظام البتكوين سياقٌ للسوق الرقميّ وحده. وكان يُطبَّق على كل
+    سوق: عشر نقاطٍ من مئة لسهمٍ سعوديّ تتحرّك بحركة البتكوين،
+    ومُضاعِفُ ثقةٍ يهبط إلى ٠٫٤ لأرامكو لأنّ البتكوين هابط.
+
+    فخارج ``BTC_MARKETS`` يُحذَف العامل **ولا يُصفَّر**: التصفير
+    يُبقيه في المقام فيخفض كل درجة عشر نقاط، والحذف يُعيد توزيع
+    وزنه على العوامل الباقية.
+    """
     p = params or load_params()
+    btc_applies = market in BTC_MARKETS
+    if not btc_applies:
+        btc = None
     w = p.get("weights") or {}
+
+    # ═══ إعادة التوزيع قبل الحساب لا بعده ═══
+    #
+    # الوزن يُعاد توزيعه على الأوزان **نفسها**، فيخرج كل شيءٍ
+    # متّسقاً: العوامل ومجاميع العائلات والدرجة. والبديل — قسمةُ
+    # الدرجة النهائية وحدها — يترك العائلات على مقياسٍ آخر، فتُجمَع
+    # على الشاشة فلا تساوي الدرجة المعروضة فوقها.
+    #
+    # والنسبة تُحسب من الأوزان المعلَنة لا من ثابت ١٠٠: من غيّر
+    # أوزانه في ‎config/pes.yaml‎ يبقى مجموعه محفوظاً.
+    if not btc_applies and float(w.get("btc_regime", 0)) > 0:
+        _bw = float(w["btc_regime"])
+        _rest = {k: float(v) for k, v in w.items() if k != "btc_regime"}
+        _sum = sum(_rest.values())
+        if _sum > 0:
+            _k = (_sum + _bw) / _sum
+            w = {k: v * _k for k, v in _rest.items()}
+
     d1, h4 = frames.get("1d"), frames.get("4h")
 
     chase = already_expanded(d1, h4, p)
@@ -569,7 +688,8 @@ def evaluate(frames: dict, *, btc: dict | None = None,
     rsi_ok = _strong(rsi_f)
 
     factors = [
-        _f_daily_trend(d1, float(w.get("daily_trend", 10)), p),
+        _f_daily_trend(d1, float(w.get("daily_trend", 8)), p),
+        _f_supertrend(frames, float(w.get("supertrend", 4)), p),
         trend_f, comp_f, vol_f,
         _f_obv(h4, float(w.get("obv", 10)), p),
         _f_resistance(h4, float(w.get("resistance", 10)), p),
@@ -585,14 +705,21 @@ def evaluate(frames: dict, *, btc: dict | None = None,
     if float(w.get("macd", 0)) > 0:
         factors.append(_f_macd(h4, float(w["macd"]), p))
 
-    bw = float(w.get("btc_regime", 10))
-    if btc and btc.get("usable"):
-        pts = bw * (btc["score"] / 10.0)
-        factors.append({"key": "btc_regime", "family": "context",
-                        "points": round(pts, 2), "max": bw,
-                        "detail": f"BTC {btc['label']} ({btc['score']}/10)"})
-    else:
-        factors.append(_na("btc_regime", bw, "نظام BTC غير محسوب"))
+    # ═══ الحذف لا التصفير ═══
+    #
+    # ``_na`` يُبقي الوزن في المقام — وهو صحيحٌ لعاملٍ **تعذّر
+    # حسابه**: غيابُ الدليل ليس دليلاً إيجابياً. أمّا هنا فالعامل
+    # **غير منطبق** أصلاً، ووزنه أُعيد توزيعه أعلاه. فإضافته ولو
+    # صفراً تحسب الوزن مرّتين.
+    if btc_applies:
+        bw = float(w.get("btc_regime", 10))
+        if btc and btc.get("usable"):
+            pts = bw * (btc["score"] / 10.0)
+            factors.append({"key": "btc_regime", "family": "context",
+                            "points": round(pts, 2), "max": bw,
+                            "detail": f"BTC {btc['label']} ({btc['score']}/10)"})
+        else:
+            factors.append(_na("btc_regime", bw, "نظام BTC غير محسوب"))
 
     total = round(sum(f["points"] for f in factors), 1)
 
@@ -635,6 +762,13 @@ def evaluate(frames: dict, *, btc: dict | None = None,
         "expanded_reasons": chase["reasons"],
         "confidence": confidence,
         "btc": btc or {},
+        # ═══ الفرق بين «لا ينطبق» و«لم يُحسب» ═══
+        #
+        # ‏``btc: {}`` وحدها ملتبسة: أهي سوقٌ لا شأن لها بالبتكوين،
+        # أم كريبتو تعذّر حساب نظامها؟ والشاشة تحتاج التمييز كي
+        # تُخفي الشارة في الأولى وتُظهر تحذيراً في الثانية.
+        "btc_applies": btc_applies,
+        "market": market,
     }
 
 

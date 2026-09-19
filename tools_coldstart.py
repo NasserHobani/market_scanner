@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,24 @@ ROOT = Path(__file__).parent
 PROJECT = "mscold"           # اسمٌ لا يصطدم بـ market-scanner
 COMPOSE = ["docker", "compose", "-p", PROJECT, "-f", str(ROOT / "docker-compose.yml")]
 
+# ═══ بيئةٌ خاصّة بالتمرين ═══
+#
+# ‏compose يفضّل بيئة الصَّدَفة على ‎.env‎، فهذه تعلو ما في ملفّك.
+#
+# **المنفذ ٨٠٩٩ لا ٨٠٠٠.** مكدّسك — أو ``manage.py runserver`` —
+# يحتجز ٨٠٠٠ غالباً، فيسقط التمرين بـ«port is already allocated»
+# ويبدو الكود معطوباً وهو سليم.
+#
+# **وكلمة مرورٍ للتمرين.** ``POSTGRES_PASSWORD`` بلا قيمةٍ
+# افتراضية في compose. وهي هنا لقاعدةٍ تُخلَق وتُمحى بعد دقائق،
+# ولا تُنشر على منفذ — فلا سرّ فيها.
+RUN_ENV = {
+    "WEB_BIND": "127.0.0.1",
+    "WEB_PORT": "8099",
+    "POSTGRES_PASSWORD": "coldstart_rehearsal_only",
+    "SEED_JOBS": "1",
+}
+
 results: list[tuple[bool, str, str]] = []
 
 
@@ -57,6 +76,7 @@ def check(name: str, ok: bool, extra: str = "") -> None:
 
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
+    kw.setdefault("env", {**os.environ, **RUN_ENV})
     return subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", **kw)
 
@@ -86,6 +106,7 @@ def main() -> int:
     env_ok = (ROOT / ".env").exists()
     print("═══ تمرين إقلاع بارد ═══")
     print(f"  المشروع: {PROJECT} (مستقلّ — لا يمسّ market-scanner)")
+    print(f"  المنفذ : 127.0.0.1:{RUN_ENV['WEB_PORT']} (لا 8000 — كي لا يصطدم بمكدّسك)")
     print(f"  ‎.env‎: {'موجود — ستُستعمل مفاتيحه' if env_ok else 'غائب — بلا مفاتيح'}")
     if not env_ok:
         print("  ⚠ بلا مفاتيح لن يُختبَر السوق الأمريكي ولا السعودي.")
