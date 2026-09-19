@@ -63,7 +63,7 @@ services:
       COLLECT_STATIC: "1"
       SEED_JOBS: ${SEED_JOBS:-1}
     ports:
-      - "${WEB_PORT:-8000}:8001"
+      - "${WEB_PORT:-8001}:8000"
     volumes:
       - appdata:/app/data
       - reports:/app/reports
