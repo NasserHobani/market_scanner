@@ -16,6 +16,7 @@ from . import pes_history_views
 from . import paper_views
 from . import pes_views
 from . import topdown_views
+from . import symbols_views
 from . import squeeze_views
 from . import golden_views
 from . import job_views
@@ -63,6 +64,13 @@ urlpatterns = [
     path("pes/", pes_views.pes_page, name="pes"),
     path("api/pes/", pes_views.api_pes, name="api_pes"),
     path("api/pes/refresh/", pes_views.api_pes_refresh, name="api_pes_refresh"),
+    # ═══ دليل الرموز: جردٌ بلا تحليل ═══
+    path("symbols/", symbols_views.symbols_page, name="symbols"),
+    path("api/symbols/", symbols_views.api_symbols, name="api_symbols"),
+    # جلب كل رموز سوق — يُبدأ بـPOST وتُقرأ حالته بـGET
+    path("api/symbols/fill/", symbols_views.api_fill_market,
+         name="api_fill_market"),
+
     # ═══ من الأعلى للأسفل: أسبوعيّ ← يوميّ ← 4س ═══
     path("topdown/", topdown_views.topdown_page, name="topdown"),
     path("api/topdown/", topdown_views.api_topdown, name="api_topdown"),

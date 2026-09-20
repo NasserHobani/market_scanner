@@ -1,0 +1,71 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}دليل الرموز · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>دليل الرموز</h1>
+    <p>كل ما يعرفه النظام — بلا تحليل ولا ترشيح</p>
+  </div>
+</header>
+
+{% comment %}
+  كل شاشةٍ أخرى تعرض ما نجا من مرشِّح، فالغائب عنها غائبٌ لسببين
+  لا يُميَّز بينهما: لم يجتز الشرط، أو لا شموع له. وهذه الشاشة
+  لا تُرشِّح — فالناقص يظهر بوصفه ناقصاً.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">جردٌ لا حكم</p>
+    <p class="ds-insight__text">
+      الشاشات الأخرى تعرض ما <strong>نجا</strong> من مرشِّح — فالرمز
+      الغائب عنها قد يكون لم يجتز الشرط، وقد يكون بلا شموع أصلاً.
+      وهنا لا ترشيح: ما اكتُشف، وما له شموع، وآخر شمعة.
+      <br>
+      <span class="ds-text-muted">ورمزٌ بلا شموع لا يدخل أيّ تحليل —
+      وهذا هو الفرق بين سوقٍ هادئ وسوقٍ لا يُقرأ.</span>
+    </p>
+  </div>
+</div>
+
+<form class="ds-filterbar" onsubmit="return false">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">بحث</span>
+    <input type="search" class="ds-input" style="width:10rem" id="f-q"
+           placeholder="BTC أو 2222" autocomplete="off">
+  </label>
+  <label class="ds-field">
+    <span class="ds-field__label">اعرض</span>
+    <select class="ds-input" style="width:11rem" id="f-only">
+      <option value="">الكلّ</option>
+      <option value="missing">بلا شموع فقط</option>
+      <option value="blocked">المحظورة فقط</option>
+    </select>
+  </label>
+  <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+          id="apply">اعرض</button>
+</form>
+
+<div id="sym-body"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/symbols-page.js' %}"></script>
+{% endblock %}

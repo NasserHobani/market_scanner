@@ -97,10 +97,23 @@
     var counts = ["ready", "entry", "not_extended", "daily", "weekly"]
       .filter(function (k) { return bs[k]; })
       .map(function (k) { return k + " " + bs[k]; }).join(" · ");
+    /* ═══ التغطية تُعرَض دائماً ═══
+     *
+     * «٢١٠ رمزاً» وحدها لا تقول أهي السوق كلّه أم ٢٪ منه. وقد
+     * حدث: عشرة رموزٍ حُلِّلت من سوقٍ فيه مئات، والشاشة سليمة
+     * المظهر تماماً. فالنقص يُكتب، ويُصبَغ تحذيراً إن كبر. */
+    var cov = g.coverage || {};
+    var covChip = "";
+    if (cov.known && cov.awaiting_count) {
+      var weak = (cov.coverage_pct || 0) < 80;
+      covChip = ' <span class="small ' + (weak ? "warn" : "muted") + '">' +
+        "تغطية " + cov.coverage_pct + "٪ · " + cov.awaiting_count +
+        " بلا شموع بعد</span>";
+    }
     var head = '<section class="ds-card mb-4"><div class="ds-card__head">' +
       '<h3 class="ds-card__title">' + esc(g.market) + "</h3>" +
       '<span class="ds-card__meta">' + g.evaluated + " رمزاً · جاهز " +
-        g.ready_count + (counts ? " · " + counts : "") + stale +
+        g.ready_count + (counts ? " · " + counts : "") + covChip + stale +
       "</span></div>";
     if (!g.rows.length) {
       return head + '<div class="p-3"><p class="small muted">' +

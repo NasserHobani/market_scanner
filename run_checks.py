@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -186,11 +187,11 @@ if len(_present) < max(1, len(_targets) // 2):
     print("✗ ملفّات الفواحص غير موجودة هنا "
           f"({len(_present)} من {len(_targets)}).")
     print()
-    print("  وهذا متوقَّع داخل حاوية Docker: ‎.dockerignore‎ يستثني")
-    print("  ‎tests_*.py‎ و‎tools_*.py‎ من الصورة عمداً — لا محلّ لها")
-    print("  على خادم.")
+    print("  إن كنت داخل حاوية: الصورة قديمة. الفواحص تدخل الصورة")
+    print("  منذ إصلاح ‎.dockerignore‎ — فأعد البناء والنشر.")
     print()
-    print("  شغّلها على جهازك من جذر المشروع:")
+    print("  وإن كنت على جهازك: شغّلها من جذر المشروع لا من مجلّدٍ آخر.")
+    print(f"      cd {ROOT}")
     print("      python run_checks.py")
     sys.exit(2)
 
@@ -204,7 +205,18 @@ else:
 TIMEOUT = 300
 
 failed: list[str] = []
+skipped: list[str] = []
 for name, cmd in steps:
+    # ═══ مفسّرٌ غائب ≠ فحصٌ فاشل ═══
+    #
+    # خطوةٌ تنادي ``node`` على خادمٍ بلا Node تطبع أثراً كاملاً
+    # وتُحسَب فشلاً — فيبدو النظام معطوباً وهو سليم، ويُخلط
+    # نقصُ البيئة بعطب الكود. والتمييز بينهما هو كل الفائدة.
+    _exe = str(cmd[0])
+    if _exe != PY and shutil.which(_exe) is None:
+        print(f"· {name} — يحتاج «{_exe}» وهو غير مثبَّت، تُخطَّى")
+        skipped.append(name)
+        continue
     try:
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True,
                            text=True, timeout=TIMEOUT, env=CHILD_ENV,
@@ -213,11 +225,17 @@ for name, cmd in steps:
         out = (r.stdout + r.stderr).strip()[-1500:]
     except subprocess.TimeoutExpired:
         ok, out = False, f"تجاوز {TIMEOUT}ث بلا انتهاء"
+    except FileNotFoundError as exc:
+        ok, out = False, f"تعذّر التشغيل: {exc}"
     print(("✓ " if ok else "✗ ") + name)
     if not ok:
         failed.append(name)
         print(out)
 
 print()
+# المتخطَّى يُعلَن ولا يُبتلَع: «كل الفواحص ✓» مع خطوتين لم تعملا
+# ادّعاءٌ أوسع من الحقيقة.
+if skipped:
+    print(f"· تُخطّيت {len(skipped)}: " + " · ".join(skipped))
 print("✓ كل الفواحص" if not failed else "✗ فشل: " + " · ".join(failed))
 sys.exit(1 if failed else 0)

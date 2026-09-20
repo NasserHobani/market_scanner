@@ -86,3 +86,20 @@ tools_*.py
 !run_checks.py
 !docs/
 !docs/**
+
+# ═══ وما تقرؤه الفواحص يدخل معها ═══
+#
+# خمسة عشر فحصاً يقرأ مصدر أداةٍ أو ملفّ إعداد ليتحقّق منه:
+# ‏``tests_universe`` يفحص ``tools_check_universe``، و‏``tests_docker``
+# يقارن متغيّرات compose بـ‎.env.docker.example‎، و‏``tests_alpaca``
+# يتأكّد أنّ ‎.gitignore‎ يحجب المفاتيح.
+#
+# وبلا هذه الملفّات تسقط الفواحص بـ``FileNotFoundError`` — لا
+# لعطبٍ في الكود بل لغيابٍ في الصورة. وفشلٌ لسببٍ لا يخصّ ما
+# يُفحَص أسوأ من عدم الفحص: يُعلَّم المرء أن يتجاهل الأحمر.
+#
+# ولا سرّ في أيّها: ‎.env.docker.example‎ قالبٌ بلا قيم، والأدوات
+# كودٌ كبقيّة الكود.
+!tools_*.py
+!.gitignore
+!.env.docker.example

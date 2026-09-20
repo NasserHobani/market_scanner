@@ -141,6 +141,14 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
                              else 9e9,
                              r["symbol"]))
 
+    # ═══ ما لم يُحلَّل يُعلَن ═══
+    #
+    # التحليل يقرأ القرص، والمزامنة هي من تملؤه. فرمزٌ اكتُشف ولم
+    # تصله المزامنة غير موجودٍ هنا — ولا شيء كان يقول ذلك.
+    from scanner.analysis import coverage as _cov
+
+    cov = _cov.report(market, [r["symbol"] for r in rows])
+
     out = {
         "market": market,
         "measured_at": time.time(),
@@ -148,6 +156,8 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
         "evaluated": len(rows),
         "skipped": skipped,
         "by_stage": by_stage,
+        "coverage": cov,
+        "coverage_text": _cov.describe(cov),
         "ready": [r["symbol"] for r in rows if r["ok"]],
         "rows": rows,
     }

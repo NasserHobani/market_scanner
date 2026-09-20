@@ -230,12 +230,19 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
     for r in rows:
         by_state[r["state"]] = by_state.get(r["state"], 0) + 1
 
+    # ما اكتُشف ولم تصله المزامنة لا يدخل هنا — فيُعلَن عدده
+    from scanner.analysis import coverage as _cov
+
+    cov = _cov.report(market, [r["symbol"] for r in rows])
+
     return {
         "market": market, "measured_at": time.time(),
         "elapsed_sec": round(time.perf_counter() - t0, 1),
         "btc": btc, "rows": rows,
         "evaluated": len(rows), "skipped": skipped,
         "by_state": by_state,
+        "coverage": cov,
+        "coverage_text": _cov.describe(cov),
     }
 
 

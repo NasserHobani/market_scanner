@@ -143,8 +143,11 @@ def _pullback_resume(h4: pd.DataFrame, p: dict) -> dict:
         out["reason"] = "شموع 4س غير كافية"
         return out
 
+    min_drop = float(cfg.get("min_pullback_pct", 2.0))
+
     close = df["close"].astype(float)
     low = df["low"].astype(float)
+    high = df["high"].astype(float)
     e20 = ema(close, 20)
     st = supertrend_state(h4)      # يُسقط الجارية بنفسه
 
@@ -152,52 +155,77 @@ def _pullback_resume(h4: pd.DataFrame, p: dict) -> dict:
     e = float(e20.iloc[-1])
     st_line = st["line"] if st["usable"] and st["direction"] > 0 else None
 
-    # ═══ اللمس في النافذة الأخيرة ═══
+    # ═══════════════════════════════════════════════════════
+    #  الارتداد يُقاس من قمّةٍ، لا من قربٍ عابرٍ للمتوسّط
+    # ═══════════════════════════════════════════════════════
     #
-    # «قريبٌ من المتوسّط الآن» ليست ارتداداً — قد يكون نازلاً
-    # إليه. والمطلوب أنّه **نزل ولمس ثمّ عاد**.
-    zone_vals = [x for x in (e, st_line) if x]
-    touched_ago = None
-    zone_used = None
-    for back in range(1, min(look, len(df) - 1) + 1):
-        lo = float(low.iloc[-back])
-        for z, name in ((e, "EMA20"), (st_line, "Supertrend")):
-            if not z:
-                continue
-            if lo <= z * (1 + touch_pct / 100.0):
-                touched_ago = back
-                zone_used = name
-                break
-        if touched_ago is not None:
-            break
+    # النسخة الأولى سألت: «هل لمس السعر المنطقة في آخر ١٢ شمعة؟»
+    # ومرّ عليها صعودٌ مستقيم بلا ارتدادٍ قطّ — لأنّ EMA20 يتخلّف
+    # عن سعرٍ يصعد باطّراد بنسبةٍ ثابتة، فيبقى القاعُ ملامساً له
+    # كل شمعة. فكانت الشاشة تسمّي القمّة «ارتداداً».
+    #
+    # وأمسكه الفحص «والقمّة بلا ارتداد تُرفَض» — وكان محقّاً.
+    #
+    # فالقياس الآن من **قمّة النافذة**: كم نزل السعر عنها؟ وما لم
+    # ينزل ``min_pullback_pct`` فلا ارتداد هناك مهما قارب المتوسّط.
+    win = min(look, len(df) - 2)
+    hi_win = high.iloc[-win:]
+    peak_pos = int(hi_win.to_numpy().argmax())     # موضعه داخل النافذة
+    peak_high = float(hi_win.iloc[peak_pos])
+    bars_after_peak = win - 1 - peak_pos
 
-    above_zone = bool(zone_vals) and c > max(zone_vals)
-    # الاستئناف: آخر شمعة مغلقة أعلى من التي قبلها
-    resumed = float(close.iloc[-1]) > float(close.iloc[-2])
-    # والبنية سليمة: لم يُكسَر أدنى قاعٍ في النافذة
-    recent_low = float(low.iloc[-look:].min())
-    prior_low = float(low.iloc[-(look * 3):-look].min()) if len(df) > look * 3 \
-        else float(low.iloc[:-look].min() if len(df) > look else recent_low)
-    structure_ok = recent_low >= prior_low
+    # ما بعد القمّة وحده هو الارتداد. والقمّة إن كانت آخر شمعة
+    # فلم يبدأ ارتدادٌ بعد.
+    after = low.iloc[-(bars_after_peak + 1):] if bars_after_peak > 0 else None
+    pull_low = float(after.min()) if after is not None else float(low.iloc[-1])
+    drop_pct = ((peak_high - pull_low) / peak_high * 100.0) if peak_high else 0.0
+    dipped = bars_after_peak > 0 and drop_pct >= min_drop
+
+    # واللمس يُسأل عن **قاع الارتداد** لا عن أيّ شمعة
+    zone_used = None
+    for z, name in ((st_line, "Supertrend"), (e, "EMA20")):
+        if z and pull_low <= z * (1 + touch_pct / 100.0):
+            zone_used, zone_val = name, z
+            break
+    else:
+        zone_val = None
+
+    # والإغلاق فوق المنطقة **التي لامسها** — لا فوق الاثنتين معاً.
+    # اشتراطُ الأعلى منهما يرفض ارتداداً سليماً من الأدنى.
+    above_zone = zone_val is not None and c > zone_val
+    resumed = c > float(close.iloc[-2])
+
+    # ═══ البنية: قاع الارتداد فوق القاع الذي سبق القمّة ═══
+    #
+    # النسخة الأولى قارنت «أدنى ١٢ شمعة» بـ«أدنى ٢٤ قبلها». وفي
+    # صعودٍ مطّرد يكون الأقدم دائماً أدنى، فيسقط الفحص على كل
+    # ارتدادٍ سليم. والمقصود: هل كسر الارتدادُ آخر قاعٍ **قبل**
+    # القمّة؟ فذاك هو كسر البنية.
+    before = low.iloc[-(win + look * 2):-(bars_after_peak + 1)] \
+        if bars_after_peak > 0 and len(df) > win + look * 2 else None
+    prior_low = float(before.min()) if before is not None and len(before) \
+        else None
+    structure_ok = prior_low is None or pull_low > prior_low
 
     out["checks"] = [
-        {"name": f"لمس المنطقة خلال {look} شمعة",
-         "ok": touched_ago is not None},
-        {"name": "وأغلق فوقها", "ok": above_zone},
-        {"name": "واستأنف صعوده", "ok": resumed},
-        {"name": "ولم يكسر القاع السابق", "ok": structure_ok},
+        {"name": f"ارتدّ عن قمّته ≥{min_drop:.0f}٪", "ok": bool(dipped)},
+        {"name": "ولمس المنطقة", "ok": zone_used is not None},
+        {"name": "وأغلق فوقها", "ok": bool(above_zone)},
+        {"name": "واستأنف صعوده", "ok": bool(resumed)},
+        {"name": "ولم يكسر القاع السابق", "ok": bool(structure_ok)},
     ]
     out["ok"] = all(x["ok"] for x in out["checks"])
-    out["touched_bars_ago"] = touched_ago
+    out["touched_bars_ago"] = bars_after_peak if dipped else None
     out["zone"] = zone_used
+    out["drop_pct"] = round(drop_pct, 2)
 
-    # ═══ الوقف تحت الارتداد لا تحت المنطقة ═══
+    # ═══ الوقف تحت قاع الارتداد ═══
     #
     # وضعُه على المتوسّط بالضبط يجعله يُضرَب بأيّ اختراقٍ كاذب.
-    # وتحت أدنى قاعٍ في الارتداد: هناك يكون الرأي قد بطل فعلاً.
-    if recent_low > 0:
-        out["stop_hint"] = round(recent_low, 8)
-        out["risk_pct"] = round((c - recent_low) / c * 100, 2) if c else None
+    # وتحت القاع: هناك يكون الرأي قد بطل فعلاً.
+    if pull_low > 0:
+        out["stop_hint"] = round(pull_low, 8)
+        out["risk_pct"] = round((c - pull_low) / c * 100, 2) if c else None
     if not out["ok"]:
         out["reason"] = " · ".join(x["name"] for x in out["checks"]
                                    if not x["ok"])

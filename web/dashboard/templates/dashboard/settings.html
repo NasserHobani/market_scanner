@@ -234,6 +234,36 @@
     قراءة الملفات وكتابتها كثيراً.
   {% endif %}
 </div>
+
+{% comment %}
+  ═══ جلب كل الرموز ═══
+
+  للملء **الأوّل** حين يكون السوق فارغاً — لا بديلاً عن مهمّة
+  المزامنة الدورية. ومئات الطلبات، فيبدأ في خيطٍ وتُسأل حالته:
+  زرٌّ ينتظر عشرين دقيقة يبدو معلّقاً، ويُضغَط ثانيةً، فتتضاعف
+  الطلبات على المنصّة نفسها.
+{% endcomment %}
+<section class="ds-card mt-4" id="fill-card">
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">جلب كل الرموز</h3>
+    <span class="ds-card__meta">للملء الأوّل — الشموع الناقصة وحدها</span>
+  </div>
+  <div class="p-3">
+    <p class="small muted mb-3">
+      يكتشف كل رموز السوق من المنصّة، ثمّ يجلب شموع ما لا شموع له.
+      وما هو على القرص لا يُعاد تنزيله — فقطعُه وإعادته يُكملان من
+      حيث وقف. ويعمل في الخلفية، فلا حاجة لإبقاء الصفحة مفتوحة.
+    </p>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {% for m in markets %}
+        <button type="button" class="ds-btn ds-btn--sm fill-btn"
+                data-market="{{ m }}">{{ m }}</button>
+      {% endfor %}
+      <span class="small muted" id="fill-note"></span>
+    </div>
+    <div id="fill-state" class="small mt-3"></div>
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -351,6 +381,72 @@
         .catch(function () { refreshBtn.disabled = false; });
     });
   }
+})();
+</script>
+
+<script>
+/* جلب كل الرموز — يبدأ في الخادم، والواجهة تسأل عن حالته.
+ *
+ * والسؤال يتوقّف حين ينتهي العمل: استطلاعٌ أبديّ على صفحةٍ
+ * مفتوحة في تبويبٍ منسيّ يُبقي الخادم مشغولاً بلا سبب. */
+(function () {
+  var card = document.getElementById("fill-card");
+  if (!card) return;
+  var out = document.getElementById("fill-state");
+  var note = document.getElementById("fill-note");
+  var timer = null;
+
+  var PHASE = {
+    discover: "يكتشف رموز السوق…",
+    sync: "يجلب الشموع الناقصة…",
+    done: "انتهى",
+    error: "تعذّر",
+  };
+
+  function render(state) {
+    var keys = Object.keys(state || {});
+    if (!keys.length) { out.innerHTML = ""; return; }
+    var running = false;
+    out.innerHTML = keys.map(function (m) {
+      var s = state[m] || {};
+      if (s.running) running = true;
+      var tone = s.running ? "muted" : (s.ok ? "" : "down");
+      var bits = [PHASE[s.phase] || s.phase || ""];
+      if (s.discovered != null) bits.push(s.discovered + " مكتشَف");
+      if (s.missing != null) bits.push(s.missing + " ناقص");
+      if (s.note) bits.push(s.note);
+      return '<div class="' + tone + '"><b>' + m + "</b> — " +
+        bits.filter(Boolean).join(" · ") + "</div>";
+    }).join("");
+    /* الأزرار تُقفل ما دام شيءٌ يعمل: طلبان متوازيان على المنصّة
+       نفسها أسرع طريقٍ إلى حدّ المعدّل. */
+    card.querySelectorAll(".fill-btn").forEach(function (b) {
+      b.disabled = running;
+    });
+    if (!running && timer) { clearInterval(timer); timer = null; }
+  }
+
+  function poll() {
+    fetch("/api/symbols/fill/", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { render(d.state || {}); })
+      .catch(function () { /* انقطاعٌ لحظيّ لا يُفرغ العرض */ });
+  }
+
+  card.addEventListener("click", function (e) {
+    var b = e.target.closest(".fill-btn");
+    if (!b) return;
+    note.textContent = "";
+    window.postJSON("/api/symbols/fill/", new URLSearchParams({
+      market: b.dataset.market,
+    })).then(function (d) {
+      if (d && d.ok === false) { note.textContent = d.reason || "تعذّر"; }
+      poll();
+      if (!timer) timer = setInterval(poll, 5000);
+    });
+  });
+
+  poll();
 })();
 </script>
 {% endblock %}

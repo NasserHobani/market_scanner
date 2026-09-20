@@ -71,6 +71,9 @@ def api_topdown(request):
             "evaluated": data.get("evaluated"),
             "by_stage": data.get("by_stage") or {},
             "ready_count": len(data.get("ready") or []),
+            # ما اكتُشف ولم تصله المزامنة — يُعرَض ولا يُبتلَع
+            "coverage": data.get("coverage") or {},
+            "coverage_text": data.get("coverage_text") or "",
             "rows": rows[:60],
             "shown": len(rows),
         })

@@ -231,6 +231,10 @@ td[title]{cursor:help}
   function setOpen(on) {
     rail.classList.toggle("is-open", on);
     if (scrim) scrim.hidden = !on;
+    /* الخلفية تُجمَّد والقائمة مفتوحة: بلا هذا يمرّر الإصبعُ
+       الصفحةَ تحتها، فتُغلق القائمة على موضعٍ غير الذي فُتحت
+       منه — والمستخدم يظنّ أنّه فقد مكانه. */
+    document.body.classList.toggle("rail-open", on);
     if (openBtn) openBtn.setAttribute("aria-expanded", String(on));
     /* التركيز يُنقل إلى الشريط عند فتحه ويعود عند إغلاقه: من
        يتنقّل بلوحة المفاتيح يجد نفسه داخل ما فتحه لا خلفه. */

@@ -97,6 +97,20 @@ _tree = ast.parse(src)
 _fn = next(n for n in ast.walk(_tree)
            if isinstance(n, ast.FunctionDef) and n.name == "supertrend_state")
 _body = ast.get_source_segment(src, _fn) or ""
+
+# ═══ سلسلة التوثيق تُحذف قبل المطابقة ═══
+#
+# سقط هذا الفحص لأنّ سلسلة توثيق ``supertrend_state`` تشرح **لماذا
+# لا نقرأ** من ``iloc[-1]`` — فوجد الفحصُ العبارة في الشرح وأعلن
+# العطب موجوداً، والكود سليم.
+#
+# وهو الخطأ نفسه الذي وقع في ``tests_pes_history`` و‏``tests_ship``
+# و‏``tests_docker`` — ثلاث مرّات قبل هذه. والدرس واحد: كل مطابقةٍ
+# على نصّ المصدر تُسبق بتجريده من التعليق **والتوثيق**، وإلّا
+# فُحص الشرحُ لا الفعل.
+_doc = ast.get_docstring(_fn, clean=False)
+if _doc:
+    _body = _body.replace(_doc, "", 1)
 _code = "\n".join(l for l in _body.splitlines()
                   if not l.strip().startswith("#"))
 check("  والقصّ صريح في الكود", "[:-1]" in _code)

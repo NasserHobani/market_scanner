@@ -1640,14 +1640,62 @@ body.has-rail { padding-inline-end: var(--ds-rail-w); }
   .ds-rail__head { justify-content: center; padding-inline: 0; }
 }
 
-/* الجوّال: الشريط ينزلق فوق المحتوى */
+/* ═══════════════════════════════════════════════════════════════
+   الجوّال: الشريط ينزلق فوق المحتوى
+   ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 991.98px) {
   body.has-rail { padding-inline-end: 0; }
-  .ds-rail { transform: translateX(-100%); box-shadow: var(--ds-shadow-lg); }
+
+  /* ═══ العرض بالنسبة لا بالبكسل ═══
+     ‏232px ثابتة تترك على هاتفٍ عرضه 360 شريطاً ضيّقاً والمحتوى
+     خلفه مزدحماً — فلا القائمة مريحة ولا الصفحة مقروءة. والنسبة
+     تعطي شريطاً واضحاً وتُبقي حافّةً تقول «ما خلفه باقٍ». */
+  .ds-rail {
+    width: min(86vw, 320px);
+    transform: translateX(-100%);
+    box-shadow: var(--ds-shadow-lg);
+    /* ‏dvh لا vh: أشرطة سفاري تظهر وتختفي، و‎100vh‎ تُقاس على
+       أطول حالة — فيُدفَع آخر عنصرٍ تحت حافّة الشاشة. */
+    height: 100dvh;
+  }
   html[dir="rtl"] .ds-rail { transform: translateX(100%); }
-  .ds-rail.is-open { transform: none; }
+  .ds-rail.is-open,
   html[dir="rtl"] .ds-rail.is-open { transform: none; }
   .ds-rail__close { display: block; }
+
+  /* ═══ الحوافّ الآمنة ═══
+     ‏viewport-fit=cover مضبوط في القالب، فالصفحة تمتدّ تحت النتوء
+     وشريط المنزل. وبلا ‎env()‎ يقع «الإعدادات» تحت الشريط فلا
+     يُضغَط — يبدو موجوداً ولا يستجيب. */
+  .ds-rail__head { padding-top: calc(var(--ds-sp-4) + env(safe-area-inset-top)); }
+  .ds-rail__foot { padding-bottom: calc(var(--ds-sp-2) + env(safe-area-inset-bottom)); }
+
+  /* ═══ مساحة اللمس ═══
+     الإصبع ليس مؤشّراً: أقلّ هدفٍ موثوق ‎44px‎. وما دونه يصيب
+     الجار — وقائمةٌ تفتح الصفحة الخطأ أسوأ من قائمةٍ لا تفتح. */
+  .ds-rail__item {
+    min-height: 44px;
+    font-size: var(--ds-fs-md);
+    padding-inline: var(--ds-sp-3);
+  }
+  .ds-rail__item svg { width: 22px; height: 22px; }
+  .ds-rail__close {
+    min-width: 44px; min-height: 44px;
+    font-size: 1.75rem;
+  }
+
+  /* التمرير داخل القائمة لا يُمرّر الصفحة خلفها عند بلوغ طرفه */
+  .ds-rail__nav { overscroll-behavior: contain; }
+
+  .ds-rail__scrim {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  /* ═══ الخلفية لا تتحرّك والقائمة مفتوحة ═══
+     بلا هذا يمرّر الإصبعُ الصفحةَ تحت القائمة، فتُغلق القائمة
+     على موضعٍ غير الذي فُتحت منه. */
+  body.rail-open { overflow: hidden; }
 }
 
 /* ═══ الجداول: رأسٌ زجاجيّ وصفٌّ أوسع ═══ */
