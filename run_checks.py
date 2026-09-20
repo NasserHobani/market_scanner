@@ -60,6 +60,8 @@ STEPS = [
     ("‏Supertrend عاملاً وخطّاً", [PY, "tests_supertrend.py"]),
     ("من الأعلى للأسفل", [PY, "tests_topdown.py"]),
     ("‏4h مشتقّة من ياهو", [PY, "tests_yahoo_derived.py"]),
+    ("القائمة الجانبية على الجوّال", [PY, "tests_mobile_rail.py"]),
+    ("الذهب والنفط", [PY, "tests_commodities.py"]),
     ("سجلّ رصد PES", [PY, "tests_pes_history.py"]),
     ("امتداد فيبوناتشي", [PY, "tests_fib_extension.py"]),
     ("الفريمات: معروض ومَمسوح", [PY, "tests_timeframes.py"]),
