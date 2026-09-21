@@ -1,0 +1,102 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}بناء الاستراتيجيات · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>بناء الاستراتيجيات</h1>
+    <p>اختر شروطاً على ما يحسبه النظام — واحفظها باسم</p>
+  </div>
+</header>
+
+{% comment %}
+  الشروط تجتمع كلّها: شرطٌ واحد لا يتحقّق يُسقط الرمز. ولا «أو»
+  ولا مجموعات — قُصد البساطة كي تُقرأ الاستراتيجية بلمحة.
+{% endcomment %}
+<div class="ds-insight ds-insight--info" role="note">
+  <span class="ds-insight__mark"></span>
+  <div class="ds-insight__body">
+    <p class="ds-insight__title">مرشِّحٌ لا حساب</p>
+    <p class="ds-insight__text">
+      الشروط تُطبَّق على القيم التي حسبها المسح وحفظها — فالفرز
+      فوريّ، والرقم الذي يفرز هو نفسه الذي تراه في صفحة الرمز.
+      <strong>وكلّ الشروط يجب أن تتحقّق معاً.</strong>
+      <br>
+      <span class="ds-text-muted">ولم تُقَس أيّ استراتيجية تبنيها
+      على صفقاتك — الشاشة تفرز، ولا تقول إنّ الفرز ينفع.</span>
+    </p>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-7">
+    <section class="ds-card">
+      <div class="ds-card__head">
+        <h3 class="ds-card__title" id="form-title">استراتيجية جديدة</h3>
+        <span class="ds-card__meta" id="cond-count">بلا شروط</span>
+      </div>
+      <div class="p-3">
+        <label class="ds-field mb-2" style="display:block">
+          <span class="ds-field__label">الاسم</span>
+          <input class="ds-input" id="s-name" style="width:100%"
+                 placeholder="مثال: انضغاط + زخم" autocomplete="off">
+        </label>
+        <label class="ds-field mb-2" style="display:block">
+          <span class="ds-field__label">ملاحظة (اختيارية)</span>
+          <input class="ds-input" id="s-note" style="width:100%"
+                 placeholder="متى تُستعمل، وما الذي تبحث عنه"
+                 autocomplete="off">
+        </label>
+        <div class="ds-field mb-3">
+          <span class="ds-field__label">الأسواق</span>
+          <div class="chips" id="s-markets">
+            {% for m in market_options %}
+              <button type="button" class="btn btn-sm btn-outline-secondary chip"
+                      data-market="{{ m.key }}">{{ m.label }}</button>
+            {% endfor %}
+          </div>
+          <span class="small muted">بلا اختيار = كل الأسواق</span>
+        </div>
+
+        <hr class="my-3">
+        <div id="conds"></div>
+        <button type="button" class="ds-btn ds-btn--sm mt-2" id="add-cond">
+          + أضف شرطاً
+        </button>
+
+        <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
+          <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+                  id="save">احفظ</button>
+          <button type="button" class="ds-btn ds-btn--sm" id="reset">
+            جديدة
+          </button>
+          <span class="small" id="save-note"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <section class="ds-card">
+      <div class="ds-card__head">
+        <h3 class="ds-card__title">المحفوظة</h3>
+        <span class="ds-card__meta" id="saved-count"></span>
+      </div>
+      <div class="p-3" id="saved"></div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ catalog|json_script:"field-catalog" }}
+{{ ops|json_script:"op-catalog" }}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/strategy-builder.js' %}"></script>
+{% endblock %}

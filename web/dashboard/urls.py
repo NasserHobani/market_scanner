@@ -17,6 +17,7 @@ from . import paper_views
 from . import pes_views
 from . import topdown_views
 from . import symbols_views
+from . import strategy_views
 from . import squeeze_views
 from . import golden_views
 from . import job_views
@@ -64,6 +65,17 @@ urlpatterns = [
     path("pes/", pes_views.pes_page, name="pes"),
     path("api/pes/", pes_views.api_pes, name="api_pes"),
     path("api/pes/refresh/", pes_views.api_pes_refresh, name="api_pes_refresh"),
+    # ═══ استراتيجيات المستخدم ولوحتها ═══
+    path("strategies/", strategy_views.builder_page, name="strategies"),
+    path("board/", strategy_views.board_page, name="board"),
+    path("api/strategies/", strategy_views.api_strategies,
+         name="api_strategies"),
+    path("api/strategies/save/", strategy_views.api_strategy_save,
+         name="api_strategy_save"),
+    path("api/strategies/delete/", strategy_views.api_strategy_delete,
+         name="api_strategy_delete"),
+    path("api/board/", strategy_views.api_board, name="api_board"),
+
     # ═══ دليل الرموز: جردٌ بلا تحليل ═══
     path("symbols/", symbols_views.symbols_page, name="symbols"),
     path("api/symbols/", symbols_views.api_symbols, name="api_symbols"),

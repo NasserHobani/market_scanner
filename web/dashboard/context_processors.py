@@ -49,6 +49,15 @@ NAV = (
     ("symbols", "دليل الرموز", "/symbols/",
      '<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/>',
      False),
+    # لبِنات: استراتيجيةٌ تُبنى من شروط
+    ("strategies", "بناء الاستراتيجيات", "/strategies/",
+     '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/>'
+     '<path d="M16.5 16.5v4M14.5 18.5h4"/>',
+     False),
+    # أعمدة: لوحة البطاقات
+    ("board", "لوحة الاستراتيجيات", "/board/",
+     '<path d="M3 4h5v16H3zM10 4h5v11h-5zM17 4h4v7h-4z"/>',
+     True),
     # ثلاثة أسهمٍ نازلة: أسبوعيّ ← يوميّ ← ٤س
     ("topdown", "من الأعلى للأسفل", "/topdown/",
      '<path d="M4 5h16M7 12h10M10 19h4"/>'

@@ -1,0 +1,65 @@
+{% extends "dashboard/base.html" %}
+{% load static assets %}
+{% block title %}لوحة الاستراتيجيات · CS Edge{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'dashboard/platform.css' %}">
+<style>
+/* ═══ أعمدة تُمرَّر أفقياً ═══
+   أربع استراتيجيات × عرضٍ ثابت تتجاوز أيّ شاشة. والتمرير الأفقيّ
+   هو ما تفعله لوحات كانبان — لا الضغط حتى تصير البطاقة غير
+   مقروءة. */
+.kb { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.kb__col { flex: 0 0 22rem; max-width: 22rem; }
+@media (max-width: 575.98px) { .kb__col { flex-basis: 85vw; max-width: 85vw; } }
+.kb__head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--ds-line);
+  border-radius: 8px 8px 0 0; background: var(--ds-surface-2);
+}
+.kb__body {
+  border: 1px solid var(--ds-line); border-top: 0;
+  border-radius: 0 0 8px 8px; padding: 8px;
+  min-height: 6rem; background: var(--ds-surface-1);
+}
+.kb__card {
+  border: 1px solid var(--ds-line); border-radius: 8px;
+  padding: 10px; margin-bottom: 8px; background: var(--ds-surface-2);
+}
+.kb__card:hover { border-color: var(--ds-info); }
+.kb__sym { font-weight: 600; font-size: 1.05rem; }
+.kb__rail { height: 3px; border-radius: 2px; margin: -10px -10px 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1>لوحة الاستراتيجيات</h1>
+    <p>عمودٌ لكلّ استراتيجية — وبطاقةٌ لكلّ رمزٍ استوفى شروطها</p>
+  </div>
+</header>
+
+<form class="ds-filterbar" onsubmit="return false">
+  <label class="ds-field">
+    <span class="ds-field__label">السوق</span>
+    <select class="ds-input" style="width:8rem" id="f-market">
+      <option value="">كل الأسواق</option>
+      {% for m in market_options %}
+        <option value="{{ m.key }}">{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="button" class="ds-btn ds-btn--primary ds-btn--sm"
+          id="apply">اعرض</button>
+  <a class="ds-btn ds-btn--sm" href="/strategies/">بناء استراتيجية</a>
+</form>
+
+<div id="board"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/strategy-board.js' %}"></script>
+{% endblock %}
