@@ -62,6 +62,7 @@ STEPS = [
     ("‏4h مشتقّة من ياهو", [PY, "tests_yahoo_derived.py"]),
     ("القائمة الجانبية على الجوّال", [PY, "tests_mobile_rail.py"]),
     ("الذهب والنفط", [PY, "tests_commodities.py"]),
+    ("فريمات كل سوق", [PY, "tests_tf_prefs.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══
     #

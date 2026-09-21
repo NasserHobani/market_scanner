@@ -115,6 +115,30 @@ def _market_has_run(market: str, timeframe: str) -> bool:
     ).exists()
 
 
+def _scan_frames(market: str) -> list[str]:
+    """الفريمات المُهيّأة للمسح — الإعداد أوّلاً ثمّ ملفّ السوق.
+
+    مصدرٌ واحد لهذه القائمة: كانت تُقرأ من ``cfg.timeframes`` في
+    موضعين، فصار الإعداد الجديد يُطبَّق على المسح ولا تعرفه رسالة
+    التنويه — فتقول «أضفه إلى ‎config/crypto.yaml‎» وهو مُضافٌ
+    فعلاً من الشاشة.
+    """
+    from scanner import tf_prefs
+
+    out = tf_prefs.scan_for(market)
+    if out:
+        return out
+    try:
+        from django.conf import settings as dj
+
+        from scanner.config import load_market
+
+        cfg = load_market(dj.SCANNER_CONFIG_DIR / f"{market}.yaml")
+        return list(cfg.timeframes or [])
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _default_scanner_timeframe(market: str, requested: str | None = None) -> str:
     """فريم افتراضي مناسب لكل سوق — لا نفترض 4h للجميع."""
     if requested and _market_has_run(market, requested):
@@ -122,17 +146,8 @@ def _default_scanner_timeframe(market: str, requested: str | None = None) -> str
     run = _latest_run(market)
     if run:
         return run.timeframe
-    try:
-        from django.conf import settings as dj
-
-        from scanner.config import load_market
-
-        cfg = load_market(dj.SCANNER_CONFIG_DIR / f"{market}.yaml")
-        if cfg.timeframes:
-            return cfg.timeframes[0]
-    except Exception:  # noqa: BLE001
-        pass
-    return "4h"
+    frames = _scan_frames(market)
+    return frames[0] if frames else "4h"
 
 
 def _timeframe_notice(market: str, requested: str | None,
@@ -154,22 +169,19 @@ def _timeframe_notice(market: str, requested: str | None,
     if not requested or requested == served:
         return {}
 
-    configured: list[str] = []
-    try:
-        from django.conf import settings as dj
-
-        from scanner.config import load_market
-
-        cfg = load_market(dj.SCANNER_CONFIG_DIR / f"{market}.yaml")
-        configured = list(cfg.timeframes or [])
-    except Exception:  # noqa: BLE001
-        pass
+    configured = _scan_frames(market)
 
     if configured and requested not in configured:
+        # ═══ والعلاج من الشاشة لا من الملفّ ═══
+        #
+        # كانت الرسالة تحيل إلى ‎config/<سوق>.yaml‎ — ملفٍّ داخل
+        # الصورة لا يبلغه المستخدم إلّا بإعادة نشر. وصار الفريم
+        # يُفعَّل من الإعدادات، فالرسالة تدلّ على ما يمكن فعله.
         why = (f"هذا السوق مُهيّأ للمسح على {' و'.join(configured)} فقط. "
-               f"لتشغيل {requested} أضفه إلى قائمة الفريمات في "
-               f"config/{market}.yaml، أو أنشئ مهمّة مسحٍ بفريمه من "
-               f"صفحة المهامّ.")
+               f"لتشغيل {requested} أضفه في الإعدادات ← «فريمات المسح "
+               f"لكل سوق»: {market}={requested}, "
+               f"{','.join(configured)} — ثمّ شغّل مهمّة المسح. "
+               f"(الشموع ستُزامَن تلقائياً.)")
     else:
         why = (f"الفريم {requested} مُهيّأ لكنّه لم يُمسح بعد في هذا "
                "السوق. شغّل المسح عليه أو انتظر الدورة القادمة.")

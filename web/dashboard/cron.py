@@ -203,9 +203,16 @@ def _h_scan(payload: dict) -> str:
     فالقائمة تُقرأ كلّها الآن. وحمولة المهمّة تعلوها: مهمّةٌ
     بفريمٍ صريح تمسحه وحده — وهو ما يسمح بفصل الفريم الثقيل في
     مهمّةٍ ذات فترةٍ أطول بدل إثقال دورةٍ واحدة.
+
+    ═══ والإعداد يعلو الملفّ ═══
+
+    ‏``scan_timeframes`` من شاشة الإعدادات يسبق ``config/<سوق>.yaml``:
+    تعديل ملفٍّ داخل الصورة يحتاج إعادة نشر، والمستخدم يريد تفعيل
+    فريمٍ وهو ينظر إلى الشاشة.
     """
     from django.conf import settings
 
+    from scanner import tf_prefs
     from scanner.config import load_market
 
     from . import scheduler
@@ -216,11 +223,15 @@ def _h_scan(payload: dict) -> str:
     if tf:
         frames = [tf]
     else:
-        try:
-            cfg = load_market(settings.SCANNER_CONFIG_DIR / f"{market}.yaml")
-            frames = list(cfg.timeframes or []) or [None]
-        except Exception:  # noqa: BLE001
-            frames = [None]
+        frames = tf_prefs.scan_for(market)
+        if not frames:
+            try:
+                cfg = load_market(
+                    settings.SCANNER_CONFIG_DIR / f"{market}.yaml")
+                frames = list(cfg.timeframes or [])
+            except Exception:  # noqa: BLE001
+                frames = []
+        frames = frames or [None]
 
     done, failed = [], []
     for one in frames:

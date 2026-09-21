@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from scanner import storage
+from scanner import storage, tf_prefs
 from scanner.adapters import get_adapter
 from scanner.config import load_market
 from scanner.live import UI_TIMEFRAMES
@@ -97,9 +97,9 @@ def get_service(config: MarketSyncConfig | None = None) -> MarketDataSyncService
 #  ضبط فريمات المزامنة من الواجهة
 # ═══════════════════════════════════════════════════════════════
 #
-# صيغة الإعداد سطرٌ واحد، سوقٌ لكل جزء:
+# صيغة الإعداد سطرٌ واحد، سوقٌ لكل جزء — والمسافة تفصل كالسطر:
 #
-#     crypto=4h,1d · saudi=1d · gold=4h,1d
+#     crypto=4h,1d saudi=1d gold=4h,1d
 #
 # والسوق غير المذكور يبقى على الافتراض. وهذا مقصود: من أراد
 # تقليل الكريبتو وحده لا يُجبَر على كتابة الأسواق الأربعة.
@@ -110,38 +110,12 @@ def get_service(config: MarketSyncConfig | None = None) -> MarketDataSyncService
 # وكلّها تتغيّر بإضافة سوقٍ واحد. والسطر الواحد يتّسع لما يأتي
 # بلا تعديل المخطّط.
 #
-# والقراءة لا ترمي أبداً: إعدادٌ مكتوبٌ خطأً يجب أن يُهمَل ويعود
-# النظام إلى الافتراض — لا أن يوقف المزامنة كلّها.
+# والتحليل نفسه انتقل إلى ``scanner.tf_prefs``: الماسح يحتاجه
+# أيضاً، ونسخةٌ ثانية منه كانت ستنحرف عن هذه.
 
 def _override_for(market: str) -> list[str]:
-    """فريمات هذا السوق من الإعدادات، أو قائمةٌ فارغة."""
-    key = (market or "").strip().lower()
-    if not key:
-        return []
-    try:
-        import sys
-
-        root = Path(__file__).resolve().parents[2]
-        if str(root / "web") not in sys.path:
-            sys.path.insert(0, str(root / "web"))
-        from dashboard import appsettings
-
-        raw = str((appsettings.values() or {}).get("sync_timeframes", ""))
-    except Exception:  # noqa: BLE001
-        return []
-    if not raw.strip():
-        return []
-
-    for part in raw.replace("·", "\n").replace(";", "\n").split("\n"):
-        if "=" not in part:
-            continue
-        name, _, tfs = part.partition("=")
-        if name.strip().lower() != key:
-            continue
-        out = [t.strip() for t in tfs.split(",") if t.strip()]
-        # الفريم المجهول يُهمَل ولا يُسقط الباقي
-        return [t for t in out if t in UI_TIMEFRAMES]
-    return []
+    """فريمات مزامنة هذا السوق من الإعدادات، أو قائمةٌ فارغة."""
+    return tf_prefs.sync_for(market)
 
 
 class MarketDataSyncService:
@@ -276,19 +250,25 @@ class MarketDataSyncService:
         إسقاطه يعني سوقاً يُزامَن ولا يُمسَح — بلا خطأ ولا صفر
         نتائج، لأنّ الماسح يقرأ القرص فيجده فارغاً لذلك الفريم.
         فهو يُضاف ولو لم يُذكر، والإعداد لا يستطيع نزعه.
+
+        وفريم المسح صار مصدرين: ``config/<سوق>.yaml`` و‏الإعداد
+        ``scan_timeframes``. وكلاهما يُضمّ هنا — وإلّا فمن فعّل
+        ‎1h‎ للمسح من الشاشة حصل على سوقٍ يُمسح بلا شموع.
         """
-        configured = list(cfg.timeframes or [])
+        market = getattr(cfg, "name", "")
+        # ما يُمسح يُزامَن قسراً: الملفّ والإعداد معاً
+        required = list(cfg.timeframes or []) + tf_prefs.scan_for(market)
 
         # ترتيب الأولوية: إعداد الواجهة ← ملفّ السوق ← الافتراض
-        chosen = _override_for(getattr(cfg, "name", "")) \
+        chosen = _override_for(market) \
             or list(getattr(cfg, "sync_timeframes", None) or []) \
             or list(self.config.sync_timeframes)
 
         merged: list[str] = []
-        for tf in list(configured) + list(chosen):
+        for tf in list(required) + list(chosen):
             if tf in UI_TIMEFRAMES and tf not in merged:
                 merged.append(tf)
-        return merged or configured
+        return merged or list(cfg.timeframes or [])
 
     # ── single pair sync ──────────────────────────────────────
 

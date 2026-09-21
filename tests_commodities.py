@@ -205,6 +205,24 @@ check("  والمسافات تُتجاهَل",
 check("  والنقطة تفصل الأسواق",
       set(_tfs("saudi=1d · crypto=4h,1d")) == {"4h", "1d"},
       str(_tfs("saudi=1d · crypto=4h,1d")))
+# ═══ والمسافة تفصل الأسواق — وهذا ما وقع ═══
+#
+# كُتب الإعداد في سطرٍ واحد بمسافات:
+#
+#     crypto=4h,1d,1h,15m saudi=1d,4h gold=4h,1d us=1d,4h
+#
+# وكانت المسافة ليست فاصلاً، فصار السطر كلّه قيمةَ ``crypto``:
+# ضاع ``15m`` لالتصاقه بـ``saudi=1d``، وبقيت الأسواق الثلاثة على
+# الافتراض. بلا خطأ ولا تنبيه.
+_one = "crypto=4h,1d,1h,15m saudi=1d,4h gold=4h,1d us=1d,4h"
+check("  والمسافة تفصل الأسواق",
+      set(_tfs(_one)) == {"4h", "1d", "1h", "15m"}, str(_tfs(_one)))
+check("  والسوق الثاني في السطر يُقرأ",
+      set(_tfs(_one, name="saudi", scan=("1d",))) == {"1d", "4h"},
+      str(_tfs(_one, name="saudi", scan=("1d",))))
+check("  والأخير كذلك",
+      set(_tfs(_one, name="us", scan=("1d",))) == {"1d", "4h"},
+      str(_tfs(_one, name="us", scan=("1d",))))
 check("  وحالة الأحرف لا تهمّ",
       set(_tfs("CRYPTO=4h,1d")) == {"4h", "1d"}, str(_tfs("CRYPTO=4h,1d")))
 # وفريمٌ مجهول يُهمَل ولا يُسقط الباقي
@@ -215,18 +233,26 @@ check("  والمجهول يُهمَل",
 check("  والمعطوب يعود للافتراض",
       set(_tfs("????")) >= {"15m", "1h", "4h", "1d"}, str(_tfs("????")))
 
+_pref_src = (ROOT / "scanner" / "tf_prefs.py").read_text(encoding="utf-8")
+_pref_code = "\n".join(l for l in _pref_src.splitlines()
+                       if not l.strip().startswith("#"))
+check("  والقراءة لا ترمي", "except Exception" in _pref_code)
+check("  والفريم المجهول يُهمَل", "UI_TIMEFRAMES" in _pref_code)
+# ═══ ومحلّلٌ واحد للاثنين ═══
+#
+# نسخةٌ ثانية من التحليل في الماسح كانت ستنحرف عن هذه — فيصير
+# ‏«crypto=4h,1h» يُزامِن فريمين ويمسح واحداً.
 _svc_src = (ROOT / "scanner" / "market_sync" / "service.py").read_text(
     encoding="utf-8")
-_svc_code = "\n".join(l for l in _svc_src.splitlines()
-                      if not l.strip().startswith("#"))
-check("  والقراءة لا ترمي", "except Exception" in
-      _svc_code.split("def _override_for")[1][:800])
-check("  والفريم المجهول يُهمَل",
-      "UI_TIMEFRAMES" in _svc_code.split("def _override_for")[1][:900])
+check("  والمزامنة تستدعي المحلّل المشترك", "tf_prefs" in _svc_src)
+_cron_src = (ROOT / "web" / "dashboard" / "cron.py").read_text(
+    encoding="utf-8")
+check("  والمسح كذلك", "tf_prefs.scan_for" in _cron_src)
 
 _schema = (ROOT / "scanner" / "settings_schema.py").read_text(
     encoding="utf-8")
 check("  والحقل في مخطّط الإعدادات", '"sync_timeframes"' in _schema)
+check("  وحقل المسح كذلك", '"scan_timeframes"' in _schema)
 
 
 # ═══════════ التقرير ═══════════
