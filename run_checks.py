@@ -69,6 +69,7 @@ STEPS = [
     # أوّلاً يقول «الأداة معطوبة» بدل «مئة عطبٍ في المشروع».
     ("أدوات الفواحص نفسها", [PY, "tests_helpers_self.py"]),
     ("استراتيجيات المستخدم", [PY, "tests_strategies.py"]),
+    ("حجز المهامّ كـ ir.cron", [PY, "tests_cron_claim.py"]),
     ("سجلّ رصد PES", [PY, "tests_pes_history.py"]),
     ("امتداد فيبوناتشي", [PY, "tests_fib_extension.py"]),
     ("الفريمات: معروض ومَمسوح", [PY, "tests_timeframes.py"]),

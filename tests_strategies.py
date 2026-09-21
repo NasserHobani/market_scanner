@@ -180,6 +180,22 @@ _v = code_of(ROOT / "web" / "dashboard" / "strategy_views.py")
 # اللوحة تقرأ المحفوظ ولا تحسب — وإلّا شغلت خيط الخادم دقائق
 c("  واللوحة تقرأ ولا تحسب", "pes_scan" not in _v)
 c("  وعمودٌ يفشل لا يُسقط اللوحة", '"error"' in _v)
+
+# ═══ ولا تشفيرٌ مزدوج للسجلّ ═══
+#
+# ``json_script`` يُسلسِل ما يُعطى. وتمريرُ ``json.dumps`` إليه
+# يُشفّرها مرّتين: يصير محتوى الوسم نصّاً لا مصفوفة، فيعيد
+# ``JSON.parse`` سلسلةً — و«FIELDS.forEach is not a function».
+# وقد وقع.
+_ctx = _v.split("def builder_page")[1][:900] if "def builder_page" in _v else ""
+c("  والسجلّ يُمرَّر كائناً",
+  "custom.field_catalog()" in _ctx and "json.dumps" not in _ctx,
+  _ctx[:160])
+_bjs = code_of(ROOT / "web" / "dashboard" / "static" / "dashboard"
+               / "strategy-builder.js")
+# والواجهة تتحقّق من الشكل: TypeError غامض أسوأ من رسالةٍ تدلّ
+c("  والواجهة تتحقّق من الشكل", "مُشفَّر مرّتين" in _bjs
+  or "[object Array]" in _bjs)
 _store = code_of(ROOT / "scanner" / "strategies" / "custom_store.py")
 c("  والحفظ يتحقّق أوّلاً", "custom.validate" in _store)
 c("  وملفٌّ معطوب يُتخطّى", "continue" in _store)

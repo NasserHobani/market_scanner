@@ -7,19 +7,50 @@
 (function () {
   "use strict";
 
-  function J(id) {
+  /* ═══ القراءة تتحقّق من الشكل ═══
+   *
+   * ``json_script`` يُسلسِل ما يُعطى. فإن مُرّر إليه نصٌّ مُسلسَل
+   * أصلاً شُفّر مرّتين، وعاد من ``JSON.parse`` **سلسلةً** لا
+   * مصفوفة — فيسقط السطر التالي بـ«forEach is not a function»،
+   * وهي رسالةٌ لا تدلّ على السبب.
+   *
+   * وقد وقع. فالتحقّق هنا يقول ما وصل بدل أن يسقط غامضاً. */
+  function J(id, want) {
     var el = document.getElementById(id);
-    try { return JSON.parse(el.textContent); } catch (e) { return null; }
+    if (!el) return { ok: false, why: "الوسم «" + id + "» غير موجود" };
+    var v;
+    try {
+      v = JSON.parse(el.textContent);
+    } catch (e) {
+      return { ok: false, why: "تعذّر تحليل «" + id + "»" };
+    }
+    var isArr = Object.prototype.toString.call(v) === "[object Array]";
+    var good = want === "array" ? isArr
+      : (v && typeof v === "object" && !isArr);
+    if (!good) {
+      return { ok: false, v: v,
+               why: "«" + id + "» وصل " + (typeof v) +
+                    (typeof v === "string" ? " — مُشفَّر مرّتين غالباً" : "") };
+    }
+    return { ok: true, v: v };
   }
-
-  var FIELDS = J("field-catalog") || [];
-  var OPS = J("op-catalog") || {};
-  var BY_KEY = {};
-  FIELDS.forEach(function (f) { BY_KEY[f.key] = f; });
 
   var condsEl = document.getElementById("conds");
   var note = document.getElementById("save-note");
   if (!condsEl) return;
+
+  var fRead = J("field-catalog", "array");
+  var oRead = J("op-catalog", "object");
+  if (!fRead.ok || !oRead.ok) {
+    condsEl.innerHTML = '<p class="small down">تعذّر تحميل قائمة الحقول: ' +
+      ((fRead.ok ? "" : fRead.why) || oRead.why) + "</p>";
+    return;
+  }
+
+  var FIELDS = fRead.v;
+  var OPS = oRead.v;
+  var BY_KEY = {};
+  FIELDS.forEach(function (f) { BY_KEY[f.key] = f; });
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {

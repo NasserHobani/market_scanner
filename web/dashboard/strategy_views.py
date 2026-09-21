@@ -35,10 +35,16 @@ def builder_page(request):
         #
         # كتابتها في القالب تعني أنّ إضافة حقلٍ تحتاج تعديلين —
         # ويُنسى أحدهما، فيُعرَض حقلٌ لا يُفرَز به أو العكس.
-        "catalog": json.dumps(custom.field_catalog(), ensure_ascii=False),
-        "ops": json.dumps(
-            {k: {"label": v["label"], "arity": v["arity"]}
-             for k, v in custom.OPS.items()}, ensure_ascii=False),
+        #
+        # ═══ وتُمرَّر كائناً لا نصّاً ═══
+        #
+        # ‏``json_script`` يُسلسِل ما يُعطى. وتمريرُ ``json.dumps``
+        # إليه يُشفّرها مرّتين: يصير محتوى الوسم **نصّاً** لا
+        # مصفوفة، فيعيد ``JSON.parse`` سلسلةً — و‏``FIELDS.forEach
+        # is not a function``.
+        "catalog": custom.field_catalog(),
+        "ops": {k: {"label": v["label"], "arity": v["arity"]}
+                for k, v in custom.OPS.items()},
     })
 
 
