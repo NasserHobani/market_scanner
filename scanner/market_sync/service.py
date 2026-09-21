@@ -93,6 +93,57 @@ def get_service(config: MarketSyncConfig | None = None) -> MarketDataSyncService
     return _SERVICE
 
 
+# ═══════════════════════════════════════════════════════════════
+#  ضبط فريمات المزامنة من الواجهة
+# ═══════════════════════════════════════════════════════════════
+#
+# صيغة الإعداد سطرٌ واحد، سوقٌ لكل جزء:
+#
+#     crypto=4h,1d · saudi=1d · gold=4h,1d
+#
+# والسوق غير المذكور يبقى على الافتراض. وهذا مقصود: من أراد
+# تقليل الكريبتو وحده لا يُجبَر على كتابة الأسواق الأربعة.
+#
+# ═══ ولماذا نصٌّ لا أربع خانات لكل سوق ═══
+#
+# خمسة أسواق × أربعة فريمات = عشرون مفتاحاً في مخطّط الإعدادات،
+# وكلّها تتغيّر بإضافة سوقٍ واحد. والسطر الواحد يتّسع لما يأتي
+# بلا تعديل المخطّط.
+#
+# والقراءة لا ترمي أبداً: إعدادٌ مكتوبٌ خطأً يجب أن يُهمَل ويعود
+# النظام إلى الافتراض — لا أن يوقف المزامنة كلّها.
+
+def _override_for(market: str) -> list[str]:
+    """فريمات هذا السوق من الإعدادات، أو قائمةٌ فارغة."""
+    key = (market or "").strip().lower()
+    if not key:
+        return []
+    try:
+        import sys
+
+        root = Path(__file__).resolve().parents[2]
+        if str(root / "web") not in sys.path:
+            sys.path.insert(0, str(root / "web"))
+        from dashboard import appsettings
+
+        raw = str((appsettings.values() or {}).get("sync_timeframes", ""))
+    except Exception:  # noqa: BLE001
+        return []
+    if not raw.strip():
+        return []
+
+    for part in raw.replace("·", "\n").replace(";", "\n").split("\n"):
+        if "=" not in part:
+            continue
+        name, _, tfs = part.partition("=")
+        if name.strip().lower() != key:
+            continue
+        out = [t.strip() for t in tfs.split(",") if t.strip()]
+        # الفريم المجهول يُهمَل ولا يُسقط الباقي
+        return [t for t in out if t in UI_TIMEFRAMES]
+    return []
+
+
 class MarketDataSyncService:
     """Synchronize OHLC from exchange → disk. Never runs AI/research/trading."""
 
@@ -204,11 +255,37 @@ class MarketDataSyncService:
     last_buried: list[str] = []
 
     def _timeframes_for(self, cfg) -> list[str]:
+        """أيّ الفريمات تُزامَن لهذا السوق.
+
+        ═══ لماذا صار قابلاً للضبط ═══
+
+        كانت أربعة فريماتٍ لكل سوق دائماً: ‎15m, 1h, 4h, 1d‎. وهي
+        ضربُ عدد الرموز في أربعة — ٥٣٠ رمز كريبتو تصير ٢٬١٢٠
+        طلباً في الدورة الواحدة، والجدول مُشبَعٌ أصلاً ثلاثة
+        أضعاف.
+
+        وأكثرها لا يُستعمل: المسح يقرأ ‎4h‎، والتحليل من الأعلى
+        للأسفل يقرأ ‎4h‎ و‎1d‎. و‎15m‎ لا تدخل إلّا في توقيت
+        الالتقاء — وهو تحسينٌ لا شرط.
+
+        فالإعداد ``sync_timeframes`` يقصرها على ما يُستعمل فعلاً،
+        لكل سوقٍ على حدة.
+
+        ═══ وفريم المسح يبقى دائماً ═══
+
+        إسقاطه يعني سوقاً يُزامَن ولا يُمسَح — بلا خطأ ولا صفر
+        نتائج، لأنّ الماسح يقرأ القرص فيجده فارغاً لذلك الفريم.
+        فهو يُضاف ولو لم يُذكر، والإعداد لا يستطيع نزعه.
+        """
         configured = list(cfg.timeframes or [])
-        wanted = list(self.config.sync_timeframes)
-        # Always include YAML scan TF + common UI TFs that we sync
-        merged = []
-        for tf in configured + wanted:
+
+        # ترتيب الأولوية: إعداد الواجهة ← ملفّ السوق ← الافتراض
+        chosen = _override_for(getattr(cfg, "name", "")) \
+            or list(getattr(cfg, "sync_timeframes", None) or []) \
+            or list(self.config.sync_timeframes)
+
+        merged: list[str] = []
+        for tf in list(configured) + list(chosen):
             if tf in UI_TIMEFRAMES and tf not in merged:
                 merged.append(tf)
         return merged or configured

@@ -31,7 +31,7 @@ from .models import ScanResult, ScanRun, SignalAlert, Trade, Watch
 # يُسقط الصفحة — وبلا سجلٍّ يختفي بلا أثر.
 log = logging.getLogger("dashboard.views")
 
-MARKETS = ["crypto", "us", "saudi", "gold", "oil"]
+MARKETS = ["crypto", "us", "saudi", "gold"]
 
 # ═══ أسماء الأسواق بالعربية ═══
 #
@@ -43,7 +43,7 @@ MARKETS = ["crypto", "us", "saudi", "gold", "oil"]
 # كلٍّ منها تعني أنّ إضافة سوقٍ رابع تحتاج ثلاثة تعديلات — ويُنسى
 # أحدها فيظهر المفتاح الخام في مكانٍ واحد.
 MARKET_LABELS = {"crypto": "العملات", "us": "الأمريكي", "saudi": "السعودي",
-                 "gold": "الذهب", "oil": "النفط"}
+                 "gold": "الذهب"}
 
 
 def market_options() -> list[dict]:
