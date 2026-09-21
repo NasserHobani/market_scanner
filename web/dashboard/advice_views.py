@@ -136,6 +136,21 @@ def api_advice_prospective(request):
     }
     if not setup["symbol"]:
         return JsonResponse({"ok": False, "reason": "بلا رمز"}, status=400)
+
+    # ═══ البيع يُرفض عند الباب ═══
+    #
+    # هذا الحقل يأتي من المتصفّح كما هو، وكان يُقبل أيّاً كان.
+    # وطلبٌ واحد بـ``side=sell`` يُنشئ خطّةً بيعية في نظامٍ كلُّ
+    # حسابٍ فيه يفترض الشراء: الوقف فوق الدخول، و‏R بالمقلوب.
+    #
+    # والرفض هنا لا التصحيح: تحويل «بيع» إلى «شراء» بهدوء يفتح
+    # مركزاً صاعداً على إشارةٍ هابطة — أسوأ من الرفض بكثير.
+    from scanner import direction as _dir
+
+    _why = _dir.reject_reason(setup["side"], where="توصية يدوية")
+    if _why:
+        return JsonResponse({"ok": False, "reason": _why}, status=400)
+    setup["side"] = _dir.LONG
     provider = (request.POST.get("provider") or "ollama").strip()
 
     if not jobs.begin("advice", scope=f"prospective:{setup['symbol']}",

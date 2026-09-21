@@ -309,6 +309,30 @@ class Trade(models.Model):
     def __str__(self) -> str:
         return f"{self.symbol} {self.get_status_display()}"
 
+    def save(self, *args, **kwargs):
+        """الحارس الأخير: لا صفقة بيعٍ **جديدة** تُحفظ.
+
+        ═══ ولماذا على الإنشاء وحده ═══
+
+        الشرط ``self.pk is None``: السجلّ قد يحمل صفقات بيعٍ قديمة
+        من قبل هذه القاعدة، وحسمُها وتحديث سعرها وإغلاقها يجب أن
+        يبقى ممكناً. ومنعُ الحفظ عليها يجمّدها «مفتوحة» إلى الأبد
+        ويُفسد كل نسبةٍ تُحسب على المغلقات.
+
+        فالمنع على الميلاد لا على الحياة.
+
+        ═══ وهذا حزامٌ ثالث ═══
+
+        المنع في ``trades.open_*`` وفي الواجهة قبله. وهذا يمسك ما
+        يمرّ من مسارٍ لم يُفكَّر فيه — ``objects.create`` في أداةٍ
+        أو هجرةٍ أو سكربت.
+        """
+        if self.pk is None:
+            from scanner import direction as _dir
+
+            self.side = _dir.ensure_long(self.side, where="Trade.save")
+        return super().save(*args, **kwargs)
+
     @property
     def is_closed(self) -> bool:
         return self.status in ("won", "lost")

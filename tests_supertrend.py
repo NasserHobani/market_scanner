@@ -31,7 +31,6 @@ ADX. فأكثر وزن العامل على حداثة الانقلاب لا عل
 """
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
@@ -45,6 +44,7 @@ from scanner.analysis import supertrend_layer as SL  # noqa: E402
 from scanner.indicators.trend import (  # noqa: E402
     supertrend, supertrend_state)
 from scanner.strategies import pes  # noqa: E402
+from tests_helpers import body_of, code_of, js_code  # noqa: E402
 
 results: list[tuple[bool, str, str]] = []
 
@@ -92,27 +92,17 @@ check("  والحالة صالحة", s_calm["usable"] is True)
 check("  والخطّ رقمٌ لا NaN",
       s_calm["line"] is not None and np.isfinite(float(s_calm["line"])))
 
-src = (ROOT / "scanner" / "indicators" / "trend.py").read_text(encoding="utf-8")
-_tree = ast.parse(src)
-_fn = next(n for n in ast.walk(_tree)
-           if isinstance(n, ast.FunctionDef) and n.name == "supertrend_state")
-_body = ast.get_source_segment(src, _fn) or ""
-
-# ═══ سلسلة التوثيق تُحذف قبل المطابقة ═══
+# ═══ التجريد من ‎tests_helpers‎ لا بيدٍ هنا ═══
 #
-# سقط هذا الفحص لأنّ سلسلة توثيق ``supertrend_state`` تشرح **لماذا
-# لا نقرأ** من ``iloc[-1]`` — فوجد الفحصُ العبارة في الشرح وأعلن
-# العطب موجوداً، والكود سليم.
+# سقط هذا الفحص مرّةً لأنّ سلسلة توثيق ``supertrend_state`` تشرح
+# **لماذا لا نقرأ** من ``iloc[-1]`` — فوجد الفحصُ العبارة في
+# الشرح وأعلن العطب موجوداً، والكود سليم.
 #
-# وهو الخطأ نفسه الذي وقع في ``tests_pes_history`` و‏``tests_ship``
-# و‏``tests_docker`` — ثلاث مرّات قبل هذه. والدرس واحد: كل مطابقةٍ
-# على نصّ المصدر تُسبق بتجريده من التعليق **والتوثيق**، وإلّا
-# فُحص الشرحُ لا الفعل.
-_doc = ast.get_docstring(_fn, clean=False)
-if _doc:
-    _body = _body.replace(_doc, "", 1)
-_code = "\n".join(l for l in _body.splitlines()
-                  if not l.strip().startswith("#"))
+# ووقع الخطأ نفسه في ``tests_pes_history`` و``tests_ship`` و
+# ``tests_docker``: أربع مرّات، وكلّ ملفٍّ يكتب تجريده بصيغته.
+# فصار في موضعٍ واحد مفحوصاً بذاته (``tests_helpers_self``).
+_code = body_of(ROOT / "scanner" / "indicators" / "trend.py",
+                "supertrend_state")
 check("  والقصّ صريح في الكود", "[:-1]" in _code)
 check("  ولا قراءة من ‎iloc[-1]‎", "iloc[-1]" not in _code)
 
@@ -152,22 +142,9 @@ check("  والعائلات ستّ كما كانت", len(set(pes.FAMILY.values()
 #
 # بقاؤه فحصاً داخل ``daily_trend`` **مع** كونه عاملاً مستقلّاً
 # يحسب الشيء نفسه مرّتين — وهو ما يُفسد الدرجة بهدوء.
-psrc = (ROOT / "scanner" / "strategies" / "pes.py").read_text(encoding="utf-8")
-ptree = ast.parse(psrc)
+PES = ROOT / "scanner" / "strategies" / "pes.py"
 
-
-def _fnsrc(name: str) -> str:
-    fn = next(n for n in ast.walk(ptree)
-              if isinstance(n, ast.FunctionDef) and n.name == name)
-    seg = ast.get_source_segment(psrc, fn) or ""
-    doc = ast.get_docstring(fn, clean=False)
-    if doc:
-        seg = seg.replace(doc, "", 1)
-    return "\n".join(l for l in seg.splitlines()
-                     if not l.strip().startswith("#"))
-
-
-dt = _fnsrc("_f_daily_trend")
+dt = body_of(PES, "_f_daily_trend")
 check("٤ ‎daily_trend‎ بلا Supertrend", "supertrend" not in dt.lower())
 # والحصص تجمع واحداً — وإلّا فقد العامل جزءاً من وزنه بصمت
 _fracs = [float(m) for m in
@@ -175,7 +152,7 @@ _fracs = [float(m) for m in
 check("  وحصصه تجمع ١٫٠",
       _fracs and abs(sum(_fracs) - 1.0) < 1e-9, str((_fracs, sum(_fracs))))
 
-sf_src = _fnsrc("_f_supertrend")
+sf_src = body_of(PES, "_f_supertrend")
 check("  والعامل يقرأ فريم المسح", '"4h"' in sf_src and "scan_tf" in sf_src)
 check("  ويقرأ اليوميّ للاتّفاق", '"1d"' in sf_src)
 check("  وأكبر حصّة لحداثة الانقلاب", "0.35" in sf_src)
@@ -246,10 +223,8 @@ _scan = (ROOT / "scanner" / "strategies" / "pes_scan.py").read_text(
     encoding="utf-8")
 check("  والمسح يمرّر التفصيل للصفوف", '"supertrend": next(' in _scan)
 
-_js = (ROOT / "web" / "dashboard" / "static" / "dashboard"
-       / "pes-page.js").read_text(encoding="utf-8")
-_jsc = "\n".join(l for l in _js.splitlines()
-                 if not l.strip().startswith("//"))
+_jsc = js_code((ROOT / "web" / "dashboard" / "static" / "dashboard"
+                / "pes-page.js").read_text(encoding="utf-8"))
 check("  وصفحة PES فيها عمود", "stCell" in _jsc)
 check("  ويُستدعى في الصفّ", "stCell(r)" in _jsc)
 check("  والعنوان في الرأس", "Supertrend</th>" in _jsc)

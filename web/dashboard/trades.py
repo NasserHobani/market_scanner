@@ -151,7 +151,19 @@ def open_from_reco(result_row, reco: dict | None, timeframe: str,
     if entry is None or stop is None or target is None:
         return None
 
-    plan = Plan(side=reco.get("side", "buy"), entry=float(entry),
+    # ═══ لا صفقة بيع تُفتح ═══
+    #
+    # ``reco`` قاموسٌ يصل من المسح أو من الذكاء أو من الواجهة، وكان
+    # اتّجاهه يُقرأ بلا سؤال. والمحرّك اليوم لا يُنتج بيعاً — لكنّ
+    # «لا يُنتج اليوم» ليست ضماناً، والضمان يُكتب.
+    from scanner import direction as _dir
+
+    if not _dir.allowed(reco.get("side")):
+        log.info("رُفضت صفقة بيع لـ %s — المنصّة شراءٌ فقط",
+                 result_row.symbol)
+        return None
+
+    plan = Plan(side=_dir.LONG, entry=float(entry),
                 stop=float(stop), target=float(target))
     if not plan.valid():
         log.debug("خطة غير صالحة لـ %s — لا صفقة", result_row.symbol)

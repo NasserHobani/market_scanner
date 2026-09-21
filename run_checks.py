@@ -62,6 +62,12 @@ STEPS = [
     ("‏4h مشتقّة من ياهو", [PY, "tests_yahoo_derived.py"]),
     ("القائمة الجانبية على الجوّال", [PY, "tests_mobile_rail.py"]),
     ("الذهب والنفط", [PY, "tests_commodities.py"]),
+    ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
+    # ═══ يسبق ما يستورده ═══
+    #
+    # خطأٌ في أدوات الفحص يقلب مئة فحصٍ لا يُسقط واحداً. فسقوطه
+    # أوّلاً يقول «الأداة معطوبة» بدل «مئة عطبٍ في المشروع».
+    ("أدوات الفواحص نفسها", [PY, "tests_helpers_self.py"]),
     ("سجلّ رصد PES", [PY, "tests_pes_history.py"]),
     ("امتداد فيبوناتشي", [PY, "tests_fib_extension.py"]),
     ("الفريمات: معروض ومَمسوح", [PY, "tests_timeframes.py"]),

@@ -908,9 +908,16 @@ def _arm_watch_inner(result_row, reco, timeframe, timedelta, timezone,
         existing.status = "cancelled"
         existing.save(update_fields=["status"])
 
+    # المراقبة تصير صفقةً حين يتحقّق شرطها — فمنعُ البيع يبدأ هنا،
+    # لا عند التحوّل. ومراقبةُ بيعٍ محفوظة تعني صفقةَ بيعٍ مؤجّلة.
+    from scanner import direction as _dir
+
+    if not _dir.allowed(reco.get("side")):
+        return 0
+
     Watch.objects.create(
         symbol=result_row.symbol, market=result_row.market, timeframe=timeframe,
-        side=reco.get("side", "buy"), entry=reco["entry"], stop=reco["stop"],
+        side=_dir.LONG, entry=reco["entry"], stop=reco["stop"],
         target1=targets[0] if targets else None, rr=reco.get("rr"),
         grade=reco.get("grade", "—"),
         reasons=" · ".join(reco.get("reasons") or [])[:255],
