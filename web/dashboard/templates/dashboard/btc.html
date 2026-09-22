@@ -141,13 +141,33 @@
     <strong>{{ tf }}</strong>
     {% if m.valid %}
       <span class="small muted">{{ m.model }}</span>
+      {% comment %}
+        ═══ «لا يعمل» له معنيان، والشاشة كانت تخلطهما ═══
+
+        الأوّل: المكتبة غائبة، فارتدّ الحساب إلى انحدارٍ لوجستيّ
+        مكتوب بيد. والثاني: المكتبة تعمل والنموذج **خسر** أمام خطّ
+        الأساس فرُفض.
+
+        وكان الفرق يظهر في كلمةٍ واحدة (‎LightGBM‎ مقابل «انحدار
+        لوجستي») يسهل ألّا تُقرأ — بينما الشارة تقول «لا يُستعمل»
+        في الحالتين. فصار حال المكتبة يُقال صراحةً.
+      {% endcomment %}
+      {% if m.has_lightgbm %}
+        <span class="badge text-bg-dark" title="المكتبة مثبّتة وعملت"
+          >المكتبة تعمل</span>
+      {% else %}
+        <span class="badge text-bg-warning"
+          title="lightgbm غير مستورَد — الحساب ارتدّ إلى بديل"
+          >‏LightGBM غير مثبّت — بديلٌ يعمل مكانه</span>
+      {% endif %}
       {% if m.usable %}
         <span class="badge text-bg-success">يتفوّق على خطّ الأساس</span>
       {% else %}
-        <span class="badge text-bg-secondary">لا يتفوّق — لا يُستعمل</span>
+        <span class="badge text-bg-secondary">خسر أمام خطّ الأساس — لا يُستعمل</span>
       {% endif %}
     {% else %}
       <span class="badge text-bg-secondary">غير مقيَّم</span>
+      <span class="small muted">{{ m.reason }}</span>
     {% endif %}
   </div>
 

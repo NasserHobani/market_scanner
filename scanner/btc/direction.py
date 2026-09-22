@@ -133,7 +133,8 @@ def walk_forward(x: np.ndarray, y: np.ndarray, *, min_train: int = 400,
     if n < min_train + step:
         return Result("غير كافٍ", [], 0.0, {}, 0, 0.0, 0.0, 0.0, False)
 
-    rng = np.random.default_rng(seed)
+    # ‏``seed`` يبقى لبذرة النموذج وحدها — ولا مولّد عشوائيّ هنا
+    # بعد أن صار خطّ الأساس العشوائي قيمتَه المتوقَّعة.
     all_pred: list[np.ndarray] = []
     all_true: list[np.ndarray] = []
     base_major: list[np.ndarray] = []
@@ -177,9 +178,26 @@ def walk_forward(x: np.ndarray, y: np.ndarray, *, min_train: int = 400,
     n_test = truth.size
     acc = float((pred == truth).mean())
 
-    rand = rng.integers(0, 2, n_test).astype("float64")
+    # ═══ العشوائي قيمته المتوقَّعة لا رميةٌ واحدة ═══
+    #
+    # كان: ``rand = rng.integers(0, 2, n_test)`` ثمّ يُقاس. وهي
+    # **عيّنةٌ واحدة** من موزّعٍ قيمته المتوقَّعة ٠٫٥ بالضبط —
+    # وخطؤها المعياريّ على ٩٦٠ عيّنة نحو ١٫٦ نقطة، فتقع الرمية
+    # بين ٤٧٪ و٥٣٪.
+    #
+    # وأثرُ ذلك ليس تجميلياً: ``best`` هو أعلى خطوط الأساس، وهو
+    # السقف الذي يجب أن يتجاوزه حدُّ ثقة النموذج الأدنى. فحين
+    # تحالف الحظّ الرمية بلغت ٥١٫٠٪ وصارت **أفضل خطّ أساس** —
+    # فحُوكم النموذج على حظّ عملةٍ معدنية.
+    #
+    # والأسوأ أنّ ``seed`` ثابتٌ هنا لكنّ ``n_test`` يتغيّر مع كل
+    # شمعةٍ جديدة، فيتغيّر خطّ الأساس بين تحديثٍ وآخر على البيانات
+    # نفسها تقريباً. تقريرٌ لا يُعاد إنتاجه.
+    #
+    # والمخمّن العشوائي المتساوي دقّتُه المتوقَّعة ٥٠٪ مهما كانت
+    # البيانات. فهذا هو الرقم.
     baselines = {
-        "عشوائي": float((rand == truth).mean()),
+        "عشوائي": 0.50,
         "الأغلبية": float((np.concatenate(base_major) == truth).mean()),
         "الاستمرار": float((np.concatenate(base_persist) == truth).mean()),
     }
