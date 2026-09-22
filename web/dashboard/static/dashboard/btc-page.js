@@ -38,14 +38,63 @@
     return window.Fmt ? window.Fmt.price(v) : Number(v).toFixed(d === undefined ? 2 : d);
   }
 
-  function cell(label, value, cls) {
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  /* ═══ الرقم بمقياسه ═══
+   *
+   * ‏«19.4» وحدها لا تقول أمِن عشرةٍ هي أم من مئة، ولا أين العتبة.
+   * و«sub» هنا هو السقف أو الحدّ — يُعرض تحت الرقم دائماً. */
+  function cell(label, value, cls, sub) {
     return '<div class="col-6 col-md-3">' +
       '<div class="muted">' + label + "</div>" +
-      '<div class="fs-6 ' + (cls || "") + '">' + value + "</div></div>";
+      '<div class="fs-6 ' + (cls || "") + '">' + value + "</div>" +
+      (sub ? '<div class="small dim">' + sub + "</div>" : "") +
+      "</div>";
+  }
+
+  /* شريط تقدّم بعلامة عتبة — الرقم يُرى موضعُه لا قيمتُه وحدها */
+  function bar(val, max, mark, cls) {
+    if (val === null || val === undefined || val !== val) return "";
+    var p = Math.max(0, Math.min(100, (val / max) * 100));
+    var m = Math.max(0, Math.min(100, (mark / max) * 100));
+    return '<div style="position:relative;height:4px;border-radius:2px;' +
+      'background:var(--ds-surface-2);margin-top:4px">' +
+      '<div style="height:100%;border-radius:2px;width:' + p.toFixed(1) +
+      '%;background:var(--' + (cls === "up" ? "up" : cls === "down"
+        ? "down" : "dim") + ')"></div>' +
+      '<div style="position:absolute;top:-2px;height:8px;width:1px;' +
+      'inset-inline-start:' + m.toFixed(1) + '%;background:var(--ds-line)">' +
+      "</div></div>";
+  }
+
+  /* ═══ الحكم أوّلاً ═══
+   *
+   * ثمانية أرقام صحيحة لا تقول ماذا أفعل. والقارئ يجمعها ذهنياً
+   * كل مرّة — فيرى الدرجة خضراء ويظنّ الإشارة قائمة، والمانع
+   * مكتوبٌ في زاويةٍ أخرى. فالحكم يُقال في سطرٍ واحد أعلى الكلّ. */
+  function paintVerdict(d) {
+    var host = document.getElementById("btc-verdict");
+    if (!host) return;
+    var v = d.verdict;
+    if (!v) { host.innerHTML = ""; return; }
+    var tone = v.level === "strong" ? "up" : v.level === "ok" ? "up" : "down";
+    host.innerHTML =
+      '<div class="d-flex align-items-start gap-3 flex-wrap" ' +
+      'style="padding:12px 14px;border-radius:8px;' +
+      'border:1px solid var(--ds-line);' +
+      'border-inline-start:4px solid var(--' + tone + ')">' +
+      '<div class="fs-5 ' + tone + '">' + esc(v.headline) + "</div>" +
+      '<div class="small muted" style="flex:1;min-width:14rem">' +
+      esc(v.why) + "</div></div>";
   }
 
   function paintAnalysis(d) {
     if (!boxEl) return;
+    var sc = d.scales || {};
     var htf = d.htf === 1 ? '<span class="up">صاعد</span>'
       : d.htf === -1 ? '<span class="down">هابط</span>'
         : '<span class="dim">مختلط</span>';
@@ -67,16 +116,148 @@
         fmt(v.baseline, 1) + "%</div>";
     }
 
+    /* ═══ «3/» ═══
+     *
+     * ‏``confluence`` **مصفوفة** أسباب لا عدد. و``[] + "/3"`` في
+     * جافاسكربت = ``"/3"`` — فظهر «3/» في العربية، رقمٌ بلا معنى.
+     * والمقام «3» كان مكتوباً باليد بينما الحدّ الحقيقيّ
+     * ``min_confluence`` = 2: الشاشة تعرض مقياساً والمانع يحسب
+     * بآخر، والقارئ لا يملك ما يكشف الفرق. */
+    var need = sc.confluence_min || 0;
+    var got = (d.confluence || []).length;
+    var confCls = !need ? "dim" : got >= need ? "up" : "warn";
+
+    var smax = sc.score_max || 100;
+    var normal = sc.score_normal === undefined ? 25 : sc.score_normal;
+    var scoreCls = d.score >= (sc.score_strong || 60) ? "up"
+      : d.score >= normal ? "warn" : "dim";
+
+    var rsiCls = d.rsi >= (sc.rsi_high || 70) ? "down"
+      : d.rsi <= (sc.rsi_low || 30) ? "up" : "dim";
+    var rvolCls = d.rvol >= (sc.rvol_high || 1.5) ? "up" : "dim";
+
     boxEl.innerHTML =
-      cell("الدرجة", fmt(d.score, 1),
-           d.score >= 25 ? "up" : d.score <= -25 ? "down" : "dim") +
-      cell("الفريم الأعلى", htf) +
-      cell("الالتقاء", (d.confluence === undefined ? "—" : d.confluence + "/3")) +
-      cell("ATR%", fmt(d.atr_pct, 2)) +
-      cell("RSI", fmt(d.rsi, 1)) +
-      cell("الحجم النسبي", fmt(d.rvol, 2)) +
-      cell("التوصية", (d.recommendation && d.recommendation.headline) || "لا توصية") +
+      cell("الدرجة", fmt(d.score, 1) + ' <span class="small dim">/ ' +
+           smax + "</span>" + bar(d.score, smax, normal, scoreCls),
+           scoreCls, "العتبة " + normal) +
+      cell("الالتقاء", got + ' <span class="small dim">/ ' + need +
+           "</span>", confCls,
+           need ? "الحدّ الأدنى للدخول" : "بلا حدّ مضبوط") +
+      cell("الفريم الأعلى", htf, "", "يومي مقابل فريم العرض") +
+      cell("RSI", fmt(d.rsi, 1), rsiCls,
+           "تشبّع فوق " + (sc.rsi_high || 70)) +
+      cell("الحجم النسبي", fmt(d.rvol, 2) + "×", rvolCls,
+           "مقابل متوسّطه — لافت فوق " + (sc.rvol_high || 1.5)) +
+      cell("ATR%", fmt(d.atr_pct, 2) + "٪", "",
+           "مدى الشمعة من السعر") +
+      cell("التوصية", (d.recommendation && d.recommendation.headline)
+           || "لا توصية") +
       cell("توقّع النموذج (" + tf + ")", model);
+  }
+
+  /* ─────────────────── السياق: تموضع · أحداث · أخبار */
+
+  function paintContext(d) {
+    paintPositioning(d.positioning || {});
+    paintEvents(d.events || [], d.calendar || {});
+    paintNews(d.headlines || [], d.news_error, d.news_note);
+  }
+
+  var POS_TONE = {
+    crowded_long: "down", heating: "warn",
+    neutral: "dim", reset: "up", unknown: "dim"
+  };
+
+  function paintPositioning(p) {
+    var host = document.getElementById("btc-positioning");
+    if (!host) return;
+    if (!p.ok) {
+      host.innerHTML = '<div class="small muted">' +
+        esc(p.why || "غير متاح") + "</div>";
+      return;
+    }
+    var tone = POS_TONE[p.state] || "dim";
+    host.innerHTML =
+      '<div class="fs-6 ' + tone + '">' + esc(p.label) + "</div>" +
+      '<div class="small muted mb-2">' + esc(p.why) + "</div>" +
+      '<div class="row g-2">' +
+      cell("التمويل", fmt(p.funding, 4) + "٪", tone,
+           "سنوياً " + fmt(p.funding_annual_pct, 1) + "٪") +
+      cell("مئين التمويل",
+           p.funding_pctile === null ? "—" : fmt(p.funding_pctile, 0),
+           tone, p.funding_samples + " دفعة") +
+      cell("المراكز المفتوحة — يوم",
+           p.oi_change_1d === null ? "—" : fmt(p.oi_change_1d, 1) + "٪", "") +
+      cell("المراكز المفتوحة — أسبوع",
+           p.oi_change_7d === null ? "—" : fmt(p.oi_change_7d, 1) + "٪", "") +
+      "</div>" +
+      /* الحدّ يُعلَن مع البيانات: نسبةٌ بلا سياقٍ تاريخيّ توحي
+         بسياقٍ لا وجود له */
+      '<div class="small dim mt-2">' + esc(p.oi_note) + "</div>" +
+      '<div class="small dim">لا يدخل الدرجة — وصفُ مخاطرة لا إشارة اتجاه.' +
+      "</div>";
+  }
+
+  var EV_TONE = { fomc: "down", cpi: "warn", halving: "up" };
+
+  function paintEvents(list, health) {
+    var host = document.getElementById("btc-events");
+    if (!host) return;
+    var warn = "";
+    /* ═══ الصمت هو العطب ═══
+     *
+     * تقويمٌ نفدت مواعيده يعرض قائمةً فارغة — تُقرأ «لا أحداث
+     * قادمة»، وهو ادّعاء كاذب. فالفرق بين «لا حدث» و«لا أعرف»
+     * يُقال صراحة. */
+    if (health && (health.ok === false || health.warn)) {
+      warn = '<div class="small down mb-2">' + esc(health.why) + "</div>";
+    }
+    if (!list.length) {
+      host.innerHTML = warn + '<div class="small muted">' +
+        (health && health.ok === false ? "" : "لا أحداث خلال ٤٥ يوماً.") +
+        "</div>";
+      return;
+    }
+    host.innerHTML = warn + list.map(function (e) {
+      var tone = EV_TONE[e.kind] || "dim";
+      return '<div class="d-flex align-items-center gap-2 py-1">' +
+        '<span class="badge text-bg-secondary">' + esc(e.kind_label) +
+        "</span>" +
+        '<span class="' + tone + '">' + esc(e.title) + "</span>" +
+        '<span class="small muted" style="margin-inline-start:auto" dir="ltr">' +
+        esc(e.date) + "</span>" +
+        '<span class="small ' + (e.days <= 3 ? "down" : "dim") + '">بعد ' +
+        e.days + " يوماً" + (e.approx ? " ≈" : "") + "</span></div>";
+    }).join("");
+  }
+
+  function paintNews(items, err, note) {
+    var host = document.getElementById("btc-news");
+    if (!host) return;
+    if (!items.length) {
+      host.innerHTML = '<div class="small muted">' +
+        esc(err || "لم تصل عناوين") + "</div>";
+      return;
+    }
+    host.innerHTML = items.map(function (n) {
+      return '<div class="py-1">' +
+        '<a href="' + esc(n.link) + '" target="_blank" rel="noopener">' +
+        esc(n.title) + "</a>" +
+        '<div class="small dim">' + esc(n.source) + " · " +
+        esc(n.date) + "</div></div>";
+    }).join("") +
+      '<div class="small dim mt-2">' + esc(note || "") + "</div>";
+  }
+
+  function loadContext() {
+    fetch("/api/btc/context/")
+      .then(function (r) { return r.json(); })
+      .then(paintContext)
+      .catch(function (e) {
+        var h = document.getElementById("btc-positioning");
+        if (h) h.innerHTML = '<div class="small muted">' +
+          esc(String(e).slice(0, 120)) + "</div>";
+      });
   }
 
   /* ─────────────────── شارت TradingView
@@ -236,6 +417,7 @@
           legendEl.textContent = (d.candles ? d.candles.length : 0) +
             " شمعة · آخر إغلاق " + fmt(d.close);
         }
+        paintVerdict(d);
         paintAnalysis(d);
         paintLevels(d);
         if (noteEl) {
@@ -454,4 +636,6 @@
 
   mountTradingView();
   load();
+  // السياق بعد الشارت: ثلاث شبكاتٍ لا تُؤخّر أوّل شمعة
+  loadContext();
 })();

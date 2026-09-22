@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))
 
 from scanner.strategies import custom as C  # noqa: E402
-from tests_helpers import Checks, code_of  # noqa: E402
+from tests_helpers import Checks, body_of, code_of  # noqa: E402
 
 c = Checks(__doc__.strip().splitlines()[0])
 
@@ -44,7 +44,13 @@ def row(**kw) -> dict:
         "symbol": "TSTUSDT", "score": 70.0, "state": "PRE_BREAKOUT",
         "confidence": 1.0, "family_count": 4, "distance": 2.5,
         "close": 100.0, "already_expanded": False,
-        "momentum": {"score": 7.0},
+        "momentum": {
+            "score": 7.0, "stoch_timing": True,
+            "macd": {"ok": True, "rising": True, "strong_rising": False,
+                     "above_signal": True, "cross_up": False,
+                     "above_zero": False, "zero_cross_up": False,
+                     "early_turn": True, "slope_pct": 14.0},
+        },
         "supertrend": {"direction": 1, "bars_since_flip": 3},
         "fib": {"room_pct": 12.0},
         "factors": [{"key": "volume", "points": 12.0, "max": 15.0},
@@ -128,6 +134,51 @@ _dsrc = code_of(ROOT / "scanner" / "strategies" / "custom.py")
 c("  والنسبة في الكود لا النقاط", "points / mx * 100" in _dsrc)
 
 
+# ═══════════ ٤ب) ‏MACD شرطاً ═══════════
+#
+# كان MACD مدموجاً في «التقاء الزخم» وحدها: رقمٌ من عشرة لا يقول
+# أيّ حالةٍ بلغها. فلم يظهر في قائمة الشروط أصلاً.
+_keys = {f["key"] for f in C.field_catalog()}
+c("٤ب ‏MACD في السجلّ",
+  {"macd_rising", "macd_cross_up", "macd_above_signal", "macd_above_zero",
+   "macd_early_turn", "macd_slope", "stoch_timing"} <= _keys,
+  str(sorted(k for k in _keys if "macd" in k or "stoch" in k)))
+c("  والراية تُقرأ",
+  ev([{"field": "macd_rising", "op": "==", "args": ["true"]}])["match"])
+c("  والكاذبة لا تُطابق «نعم»",
+  not ev([{"field": "macd_cross_up", "op": "==", "args": ["true"]}])["match"])
+c("  والميل رقمٌ يُقارَن",
+  ev([{"field": "macd_slope", "op": ">=", "args": [10]}])["match"])
+c("  وتوقيت StochRSI",
+  ev([{"field": "stoch_timing", "op": "==", "args": ["true"]}])["match"])
+# ═══ والغائب لا يُطابق «لا» ═══
+#
+# ``bool(missing)`` = «لا». فشرطُ «التقاطع = لا» كان سيطابق كلّ
+# رمزٍ لم يُحسب له MACD — رموزٌ لم تُفحَص تدخل النتيجة.
+c("  والغائب لا يطابق «لا»",
+  not ev([{"field": "macd_cross_up", "op": "==", "args": ["false"]}],
+         momentum={"score": 7.0})["match"])
+c("  و‎ok=False‎ غيابٌ لا نفي",
+  not ev([{"field": "macd_rising", "op": "==", "args": ["false"]}],
+         momentum={"score": 0.0, "macd": {"ok": False, "why": "شموع قليلة"}}
+         )["match"])
+c("  والتوقيت الغائب كذلك",
+  not ev([{"field": "stoch_timing", "op": "==", "args": ["false"]}],
+         momentum={"score": 1.0})["match"])
+# ═══ والمدرَّج نفسه لا يُعرَض ═══
+#
+# قيمته بوحدة السعر: عتبةٌ تصلح لبتكوين وتخطئ في رمزٍ بسنتات —
+# فتفرز بالسعر وهي تظنّ أنّها تفرز بالزخم.
+c("  ولا يُعرَض المدرَّج خاماً", "macd_hist" not in _keys)
+_ps = code_of(ROOT / "scanner" / "strategies" / "pes_scan.py")
+c("  والرايات تُحفَظ في المسح", "_macd_brief" in _ps)
+_brief = body_of(ROOT / "scanner" / "strategies" / "pes_scan.py",
+                 "_macd_brief")
+c("  والميل نسبةً لا سعراً", "slope_pct" in _brief, _brief[:120])
+c("  ولا سلاسل في المحفوظ",
+  '"hist"' not in _brief and '"line"' not in _brief, _brief[:200])
+
+
 # ═══════════ ٥) التحقّق قبل الحفظ ═══════════
 c("٥ الفارغة مرفوضة", C.validate([]) != [])
 c("  والحقل المجهول مرفوض",
@@ -196,6 +247,20 @@ _bjs = code_of(ROOT / "web" / "dashboard" / "static" / "dashboard"
 # والواجهة تتحقّق من الشكل: TypeError غامض أسوأ من رسالةٍ تدلّ
 c("  والواجهة تتحقّق من الشكل", "مُشفَّر مرّتين" in _bjs
   or "[object Array]" in _bjs)
+
+# ═══ ولا تُمحى القيمة وهي تُكتب ═══
+#
+# كان مستمع ``change`` يشمل خانة القيمة نفسها. و``change`` على
+# حقلٍ رقميّ يقع عند الخروج منه — أي بعد كتابة الرقم مباشرة.
+# فتُعاد بناء الخانة بـ``args = []`` ويُمحى ما كُتب في اللحظة
+# نفسها، بلا خطأٍ في وحدة التحكّم. فبدا الحقل يرفض الإدخال.
+_chg = _bjs.split('addEventListener("change"')[1][:700] \
+    if 'addEventListener("change"' in _bjs else ""
+c("  والمستمع يخرج لغير الحقل والعملية",
+  "if (!isField && !isOp) return;" in _chg, _chg[:200])
+c("  وتغيير العملية يُبقي ما كُتب", "currentArgs(row)" in _bjs)
+c("  وتغيير الحقل يمسحه", "isField ? null :" in _bjs)
+
 _store = code_of(ROOT / "scanner" / "strategies" / "custom_store.py")
 c("  والحفظ يتحقّق أوّلاً", "custom.validate" in _store)
 c("  وملفٌّ معطوب يُتخطّى", "continue" in _store)

@@ -61,6 +61,40 @@ def _fib_brief(fib: dict) -> dict:
     }
 
 
+def _macd_brief(m: dict | None) -> dict:
+    """رايات MACD — بلا سلاسل ولا قيمٍ بوحدة السعر.
+
+    ═══ لماذا لا يُحفظ المدرَّج نفسه ═══
+
+    قيمته بوحدة السعر: مدرَّجُ بتكوين بالمئات ومدرَّجُ رمزٍ بسنتات
+    بالكسور. فشرطٌ مثل «المدرَّج ≥ 0.5» يعني شيئاً في رمزٍ ولا
+    شيء في آخر، ويفرز بالسعر وهو يظنّ أنّه يفرز بالزخم.
+
+    والمحفوظ بدله ``slope_pct``: ميل المدرَّج نسبةً إلى **مداه**
+    في ستّين شمعة. فهو قابل للمقارنة بين الرموز، ومعناه واحد.
+
+    و``ok=False`` مع سببٍ مكتوب لا حذفُ المفتاح: الغائب يجب أن
+    يُعرَف أنّه غائب — وعدُّه «لا» يُسقط رمزاً لم يُفحَص.
+    """
+    if not isinstance(m, dict) or not m.get("ok"):
+        why = (m or {}).get("why", "غير محسوب") if isinstance(m, dict) \
+            else "غير محسوب"
+        return {"ok": False, "why": why}
+    rel = m.get("rel_slope")
+    return {
+        "ok": True,
+        "rising": bool(m.get("rising")),
+        "strong_rising": bool(m.get("strong_rising")),
+        "above_signal": bool(m.get("above_signal")),
+        "cross_up": bool(m.get("cross_up")),
+        "above_zero": bool(m.get("above_zero")),
+        "zero_cross_up": bool(m.get("zero_cross_up")),
+        "early_turn": bool(m.get("early_turn")),
+        # ميلٌ نسبيّ ٪ — الوحيد القابل للمقارنة بين الرموز
+        "slope_pct": None if rel is None else round(float(rel) * 100.0, 1),
+    }
+
+
 def cache_path(market: str) -> Path:
     return _root() / "data" / "pes" / f"{market}.json"
 
@@ -200,6 +234,13 @@ def scan(market: str, *, limit: int = 0, params: dict | None = None) -> dict:
                     "timing_source", ""),
                 "timeframes": (res.get("momentum") or {}).get(
                     "timeframes", {}),
+                # ═══ وحالات MACD رايات لا سلاسل ═══
+                #
+                # السلاسل هي ما كان يضخّم الملفّ — لا هذه. وسبع
+                # رايات لكل رمز أقلّ من مئة بايت، وبها يصير MACD
+                # شرطاً يُبنى عليه في مُنشئ الاستراتيجيات بدل أن
+                # يكون رقماً واحداً مدموجاً في درجة الالتقاء.
+                "macd": _macd_brief((res.get("momentum") or {}).get("macd")),
             },
             "momentum_backs_breakout": cls.get("momentum_backs_breakout",
                                                False),

@@ -165,12 +165,38 @@
       n ? n + " شرطاً — كلّها يجب أن تتحقّق" : "بلا شروط";
   }
 
+  /* القيم المكتوبة الآن — تُقرأ قبل أيّ إعادة بناء */
+  function currentArgs(row) {
+    var out = [];
+    Array.prototype.forEach.call(
+      row.querySelectorAll(".c-arg"), function (el) {
+        if (!el.multiple) out.push(el.value);
+      });
+    return out;
+  }
+
+  /* ═══ لا تُعاد بناء الخانة إلّا إن تغيّر ما يحدّد شكلها ═══
+   *
+   * كان المستمع يشمل خانة القيمة نفسها. و``change`` على حقلٍ
+   * رقميّ يقع عند الخروج منه — أي بعد كتابة الرقم مباشرة. فتُعاد
+   * بناء الخانة بـ``args = []``، ويُمحى ما كُتب في اللحظة نفسها.
+   *
+   * فبدا الحقل يرفض الإدخال: تكتب ٨٠ ثمّ تنقر خارجه فيعود فارغاً،
+   * وليس في وحدة التحكّم خطأ يدلّ. وهذا ما بُلّغ عنه بـ«حقل
+   * النسبة لا يمكنني تحديده».
+   *
+   * والحقل والعملية وحدهما يغيّران الشكل: النوع يقرّر أهي خانة
+   * رقمٍ أم قائمة، والعملية تقرّر خانةً أم خانتين. */
   condsEl.addEventListener("change", function (e) {
     var row = e.target.closest(".cond-row");
     if (!row) return;
+    var isField = e.target.classList.contains("c-field");
+    var isOp = e.target.classList.contains("c-op");
+    if (!isField && !isOp) return;
+
     /* تغيير الحقل قد يُبطل العملية: «بين» لا تنطبق على المرحلة.
        فتُعاد بناء الخيارات بدل تركها تحفظ اختياراً مستحيلاً. */
-    if (e.target.classList.contains("c-field")) {
+    if (isField) {
       var f = BY_KEY[e.target.value] || {};
       var opEl = row.querySelector(".c-op");
       var cur = opEl.value;
@@ -180,7 +206,10 @@
           esc((OPS[o] || {}).label || o) + "</option>";
       }).join("");
     }
-    renderArgs(row, null);
+
+    /* وتغيير العملية يُبقي ما كُتب: «≥ 80» ثمّ «≤» تعني 80 نفسها.
+       وتغيير الحقل يمسحه — ٨٠٪ من سقف عاملٍ ليست ٨٠ دولاراً. */
+    renderArgs(row, isField ? null : { args: currentArgs(row) });
   });
 
   condsEl.addEventListener("click", function (e) {

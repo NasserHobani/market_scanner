@@ -46,6 +46,69 @@ def _report(force: bool = False) -> dict:
     return rep
 
 
+# ═══════════════════════════════════════════════════════════════
+#  السياق: التموضع · الأحداث · الأخبار
+# ═══════════════════════════════════════════════════════════════
+#
+# ═══ ولماذا نقطةٌ منفصلة ═══
+#
+# ثلاثةُ مصادرَ شبكية: مشتقّات Binance، وارتفاع الكتلة، وتغذيات
+# RSS. ووضعُها في رسم الصفحة يعني صفحةً تنتظر ثلاث شبكاتٍ قبل أن
+# تُظهر شمعةً واحدة — والقاعدة المكتوبة أعلى هذا الملفّ تمنعه.
+#
+# فتصل الصفحة أوّلاً، ويصل السياق بعدها.
+
+_CTX_TTL = 300.0
+
+
+def _context_payload() -> dict:
+    from scanner.analysis import events as ev
+    from scanner.analysis import positioning as pos
+
+    out: dict = {}
+
+    # كلٌّ في ``try`` منفصل: فشلُ التغذيات لا يُخفي التموضع.
+    # ومصدرٌ واحد معطوب كان سيبتلع الثلاثة.
+    try:
+        out["positioning"] = pos.read(SYMBOL)
+    except Exception as exc:  # noqa: BLE001
+        out["positioning"] = {"ok": False, "state": "unknown",
+                              "why": str(exc)[:120]}
+    try:
+        out["events"] = ev.upcoming(45)
+        out["calendar"] = ev.calendar_health()
+    except Exception as exc:  # noqa: BLE001
+        out["events"] = []
+        out["calendar"] = {"ok": False, "why": str(exc)[:120]}
+    try:
+        from scanner.analysis.context import fetch_headlines
+
+        items, err = fetch_headlines(MARKET, limit=8)
+        out["headlines"] = items
+        out["news_error"] = err
+    except Exception as exc:  # noqa: BLE001
+        out["headlines"] = []
+        out["news_error"] = str(exc)[:120]
+
+    # ═══ والعناوين لا تُحلَّل ═══
+    #
+    # لا وسمَ «إيجابي/سلبي» هنا. وسمُ العناوين برأي نموذج لغة يبدو
+    # تحليلاً وهو تخمين، ولم يُقَس أثره على أيّ صفقة في هذه
+    # المنصّة. فتبقى قراءةً للإنسان.
+    out["news_note"] = "العناوين للقراءة — لا تدخل أيّ حساب ولا تُوسَم"
+    return out
+
+
+def api_btc_context(request):
+    """التموضع والأحداث والعناوين — نداءٌ واحد، مخبّأ."""
+    hit = _CACHE.get("context")
+    if hit and (time.time() - hit[0]) < _CTX_TTL:
+        return JsonResponse({"ok": True, "cached": True, **hit[1]})
+    data = _context_payload()
+    _CACHE["context"] = (time.time(), data)
+    return JsonResponse({"ok": True, "cached": False, **data})
+
+
 def _last_opinion() -> dict:
     """آخر رأي مسجَّل للنموذج المحلي عن البتكوين — من القرص، بلا شبكة."""
     import json

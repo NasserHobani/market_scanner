@@ -115,6 +115,64 @@ def _market_has_run(market: str, timeframe: str) -> bool:
     ).exists()
 
 
+def _scales(cfg) -> dict:
+    """سقوف الأرقام وعتباتها — من مصدر الحكم لا من القالب.
+
+    ═══ العطب الذي عولج ═══
+
+    الواجهة كتبت «‎/3‎» بخطّ اليد بينما ``min_confluence`` = 2.
+    فالبطاقة تقول مقياساً والمانع يحسب بآخر — والقارئ لا يملك ما
+    يكشف الفرق.
+
+    والدرجة تُعرض «19.4» بلا سقفٍ ولا عتبة: لا يُعرف أهي من عشرة
+    أم من مئة، ولا أين العتبة التي تفصل.
+    """
+    return {
+        "score_max": 100,
+        "score_normal": float(getattr(cfg, "normal_threshold", 25) or 0),
+        "score_strong": float(getattr(cfg, "strong_threshold", 60) or 0),
+        "confluence_min": int(getattr(cfg, "min_confluence", 0) or 0),
+        "rsi_high": 70, "rsi_low": 30,
+        "rvol_high": 1.5,
+    }
+
+
+def _verdict(result, cfg) -> dict:
+    """سطرُ حكمٍ واحد — بدل أن يجمعه القارئ من ستّ بطاقات.
+
+    ═══ لماذا ═══
+
+    الشاشة تعرض ثمانية أرقام في صفّين، كلٌّ منها صحيح، ولا واحد
+    منها يقول **ماذا أفعل**. والقارئ يجمعها ذهنياً كل مرّة —
+    وهو بالضبط ما يُخطئ فيه: يرى الدرجة خضراء فيظنّ الإشارة
+    قائمة، والمانع مكتوبٌ في زاويةٍ أخرى.
+
+    فالحكم يُقال أوّلاً، وسببُه معه، والتفصيل تحته.
+    """
+    ready = bool(getattr(result, "ready", False))
+    blocker = str(getattr(result, "blocker", "") or "")
+    score = float(getattr(result, "score", 0.0) or 0.0)
+    conf = list(getattr(result, "confluence", []) or [])
+    need = int(getattr(cfg, "min_confluence", 0) or 0)
+    strong = float(getattr(cfg, "strong_threshold", 60) or 60)
+
+    if ready:
+        level = "strong" if score >= strong else "ok"
+        head = "جاهز للدخول" if level == "strong" else "شروط الدخول مكتملة"
+        why = (f"الدرجة {score:.0f} من ١٠٠ والالتقاء {len(conf)} من {need} — "
+               "لا مانع.")
+    else:
+        level = "no"
+        head = "لا دخول"
+        # المانع هو السبب الحقيقيّ. وعرضُه هنا يمنع «الدرجة خضراء
+        # فالإشارة قائمة» — وهي القراءة الخاطئة الشائعة.
+        why = (blocker or "لا سبب مسجَّل") + \
+            f" · الدرجة {score:.0f}/١٠٠ · الالتقاء {len(conf)}/{need}"
+
+    return {"level": level, "headline": head, "why": why,
+            "ready": ready, "blocker": blocker}
+
+
 def _scan_frames(market: str) -> list[str]:
     """الفريمات المُهيّأة للمسح — الإعداد أوّلاً ثمّ ملفّ السوق.
 
@@ -912,6 +970,16 @@ def api_chart(request, market: str, symbol: str):
             "rvol": result.context.get("rvol"),
             "atr_pct": result.context.get("atr_pct"),
             "candles_count": len(df),
+            # ═══ الرقم بمقياسه وحدّه ═══
+            #
+            # «الدرجة 19.4» و«الالتقاء 3/» لا يقولان شيئاً بلا سقفٍ
+            # ولا عتبة. والأسوأ أنّ «3» كان **مكتوباً في الواجهة**
+            # بينما الحدّ الحقيقيّ ``min_confluence`` = 2 — فالشاشة
+            # تعرض مقياساً والمانع يحسب بآخر.
+            #
+            # فتُرسَل المقاييس من مصدر الحكم نفسه.
+            "scales": _scales(cfg),
+            "verdict": _verdict(result, cfg),
             "countdown": _countdown(timeframe).get("seconds"),
             "history_url": f"/api/history/{market}/{symbol}/?tf={timeframe}",
             "freshness": __import__(

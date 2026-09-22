@@ -162,6 +162,7 @@ urlpatterns = [
          name="api_trade_review_status"),
     path("api/btc/opinion/", btc_views.api_btc_opinion, name="api_btc_opinion"),
     path("api/btc/refresh/", btc_views.api_btc_refresh, name="api_btc_refresh"),
+    path("api/btc/context/", btc_views.api_btc_context, name="api_btc_context"),
     path("api/btc/opinion/status/", btc_views.api_btc_opinion_status,
          name="api_btc_opinion_status"),
     path("search/", views.search, name="search"),

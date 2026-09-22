@@ -54,6 +54,15 @@
     <div class="small muted mt-1" data-chart-mode></div>
   </div>
 
+  {% comment %}
+    ═══ الحكم أوّلاً ═══
+
+    ثمانية أرقام صحيحة لا تقول ماذا أفعل، والقارئ يجمعها ذهنياً كل
+    مرّة — فيرى الدرجة خضراء ويظنّ الإشارة قائمة، والمانع مكتوبٌ
+    في زاويةٍ أخرى. فسطرٌ واحد يقول الحكم وسببه، والتفصيل تحته.
+  {% endcomment %}
+  <div id="btc-verdict" class="mt-3"></div>
+
   {# القراءة الفنّية لنفس الفريم المعروض — الشارت والتحليل لا يفترقان #}
   <div class="row g-2 mt-3 small" id="chart-analysis"></div>
 
@@ -69,6 +78,50 @@
     <div id="levels-box" class="row g-1 small"></div>
   </div>
 </div></div>
+
+{% comment %}
+  ═══ السياق: شاهدٌ من خارج الشارت ═══
+
+  كل ما فوق مشتقٌّ من سلسلة السعر نفسها — مهما كثرت المؤشّرات فهي
+  شاهدٌ واحد بأسماءٍ كثيرة (المادّة ١٧).
+
+  وهذه الثلاثة من مصادر أخرى: من يحمل المراكز وبأيّ رافعة، ومتى
+  الأحداث الكلّية، وماذا يُقال. ولا يدخل شيء منها الدرجة.
+{% endcomment %}
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6">تموضع المشتقّات</h2>
+      <p class="small muted mb-2">
+        التمويل والمراكز المفتوحة يقولان <strong>من</strong> يدفع
+        السعر وبأيّ رافعة — لا إلى أين يذهب.
+      </p>
+      <div id="btc-positioning" class="small">
+        <span class="muted">يحمّل…</span>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6">أحداث قادمة</h2>
+      <p class="small muted mb-2">
+        مواعيد معلومة لا تنبّؤات. خطّةٌ بأفق ثلاثة أيّام تمرّ على
+        قرار فائدة ليست خطّةً بأفق ثلاثة أيّام.
+      </p>
+      <div id="btc-events" class="small">
+        <span class="muted">يحمّل…</span>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6">العناوين</h2>
+      <div id="btc-news" class="small">
+        <span class="muted">يحمّل…</span>
+      </div>
+    </div></div>
+  </div>
+</div>
 
 {% if consensus %}
 <div class="alert {% if consensus.aligned %}alert-secondary{% else %}alert-warning{% endif %} py-2 small mb-3">

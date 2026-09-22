@@ -77,6 +77,42 @@ def _st_dir(row: dict) -> str | None:
     return "up" if d > 0 else "down"
 
 
+def _macd(row: dict) -> dict | None:
+    """كتلة MACD المحفوظة — أو ``None`` إن لم تُحسب.
+
+    والتمييز لازم: ``bool(missing)`` يساوي «لا»، فشرطُ «التقاطع
+    = لا» كان سيطابق كل رمزٍ لم يُحسب له MACD أصلاً. وهو أسوأ
+    أنواع الخطأ — قائمةٌ تبدو أطول فتبدو الاستراتيجية أنجح.
+    """
+    m = row.get("momentum") or {}
+    m = m.get("macd") if isinstance(m, dict) else None
+    return m if isinstance(m, dict) and m.get("ok") else None
+
+
+def _macd_flag(key: str):
+    def read(row: dict):
+        m = _macd(row)
+        return None if m is None else bool(m.get(key))
+    return read
+
+
+def _macd_slope(row: dict) -> float | None:
+    m = _macd(row)
+    return None if m is None else _num(m.get("slope_pct"))
+
+
+def _stoch_timing(row: dict) -> bool | None:
+    """توقيت StochRSI — و``None`` لصفٍّ قديم لا يحمله.
+
+    ``m.get(key, False)`` كان سيُعيد «لا» لصفٍّ مُسح قبل إضافة
+    الحقل، فيطابق شرط «التوقيت = لا» رمزاً لم يُفحَص.
+    """
+    m = row.get("momentum")
+    if not isinstance(m, dict) or "stoch_timing" not in m:
+        return None
+    return bool(m.get("stoch_timing"))
+
+
 def _factor_pct(row: dict, key: str) -> float | None:
     """حصّة عاملٍ من سقفه — ٪.
 
@@ -140,6 +176,61 @@ FIELDS: dict[str, dict[str, Any]] = {
         "min": 0, "max": 10, "step": 1,
         "help": "‏MACD تأكيداً و‏StochRSI توقيتاً. والسابعة قفزةُ التوقيت.",
         "get": lambda r: _num((r.get("momentum") or {}).get("score")),
+    },
+    # ═══ MACD حالاتٍ لا رقماً ═══
+    #
+    # كان MACD مدموجاً في «التقاء الزخم» وحدها: رقمٌ من عشرة لا
+    # يقول أيّ حالةٍ بلغها. و«المدرَّج صاعد وهو سالب» و«تقاطعٌ صاعد
+    # للتوّ» حالتان مختلفتان تماماً في التوقيت، وتذوبان في الرقم
+    # نفسه.
+    #
+    # والمدرَّج نفسه لا يُعرَض شرطاً: قيمته بوحدة السعر، فعتبةٌ
+    # تصلح لرمزٍ وتخطئ في آخر. والمعروض ميلُه نسبةً إلى مداه.
+    #
+    # وهي على فريم ‎4h‎ — الإطار الذي يُقاس عليه الزخم الرئيسي.
+    "macd_rising": {
+        "label": "‏MACD: المدرَّج صاعد", "kind": "bool",
+        "help": "ثلاث شمعاتٍ متتالية صاعدة في المدرَّج. وهي الإشارة "
+                "المبكّرة — تسبق التقاطع بشمعاتٍ عدّة.",
+        "get": _macd_flag("rising"),
+    },
+    "macd_early_turn": {
+        "label": "‏MACD: تحسّنٌ مبكّر (سالبٌ وصاعد)", "kind": "bool",
+        "help": "المدرَّج ما زال تحت الصفر لكنّه يصعد — أنفع حالاته "
+                "لاستراتيجية «ما قبل»، وأخطرها إن لم يكتمل.",
+        "get": _macd_flag("early_turn"),
+    },
+    "macd_cross_up": {
+        "label": "‏MACD: تقاطعٌ صاعد الآن", "kind": "bool",
+        "help": "الخطّ عبر إشارته في الشمعة المغلقة الأخيرة. "
+                "تأكيدٌ متأخّر عن الميل، وأقوى منه.",
+        "get": _macd_flag("cross_up"),
+    },
+    "macd_above_signal": {
+        "label": "‏MACD: فوق خطّ الإشارة", "kind": "bool",
+        "help": "حالةٌ مستمرّة لا لحظة — تصلح شرطَ سياقٍ مع شرط "
+                "توقيتٍ آخر.",
+        "get": _macd_flag("above_signal"),
+    },
+    "macd_above_zero": {
+        "label": "‏MACD: المدرَّج فوق الصفر", "kind": "bool",
+        "help": "الزخم موجب بالفعل. واشتراطه يستبعد الانعكاسات "
+                "المبكّرة — وهي ما تبحث عنه هذه المنصّة غالباً.",
+        "get": _macd_flag("above_zero"),
+    },
+    "macd_slope": {
+        "label": "‏MACD: ميل المدرَّج", "kind": "number", "unit": "٪",
+        "min": -100, "max": 100, "step": 5,
+        "help": "الميل نسبةً إلى مدى المدرَّج في ستّين شمعة — لا "
+                "بوحدة السعر. فهو قابل للمقارنة بين الرموز: ١٠٪ "
+                "فأكثر «صعودٌ واضح».",
+        "get": _macd_slope,
+    },
+    "stoch_timing": {
+        "label": "‏StochRSI: تقاطع التوقيت", "kind": "bool",
+        "help": "تقاطعٌ صاعد من منطقةٍ ليست مشبَعة. وهو ما يختار "
+                "اللحظة — و‏MACD يختار الرمز.",
+        "get": _stoch_timing,
     },
     "supertrend_dir": {
         "label": "اتّجاه Supertrend", "kind": "enum",

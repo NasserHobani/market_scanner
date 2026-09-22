@@ -63,6 +63,7 @@ STEPS = [
     ("القائمة الجانبية على الجوّال", [PY, "tests_mobile_rail.py"]),
     ("الذهب والنفط", [PY, "tests_commodities.py"]),
     ("فريمات كل سوق", [PY, "tests_tf_prefs.py"]),
+    ("سياق البتكوين", [PY, "tests_btc_context.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══
     #
