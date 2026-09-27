@@ -83,6 +83,36 @@ if login.exists():
     # ويُظنّ الخادم ساقطاً.
     c("  وألوانٌ احتياطية فيها", "background:#0f1115" in txt)
 
+# ═══════════ ٣ب) ‎{#‎ يعلّق سطراً لا كتلة ═══════════
+#
+# ═══ العطب الثاني في الملفّ نفسه ═══
+#
+# ‏‎{#‎ في قوالب Django يعلّق **سطراً واحداً**. فكتلةٌ تمتدّ أسطراً
+# تُحلَّل قالباً عادياً بعد سطرها الأوّل:
+#
+#   ١. نصّ الشرح يظهر في الصفحة للزائر.
+#   ٢. وإن ضمّ الشرح وسماً بين ‎{% %}‎ — ولو داخل اقتباسٍ في
+#      الشرح — حاول المحلّل تنفيذه.
+#
+# وهذا ما وقع: شرحٌ يذكر ``{% static %}`` أسقط صفحة الدخول كلّها
+# بـ``TemplateSyntaxError: Invalid block tag on line 8``. وهي
+# الصفحة التي يمرّ بها كل شيء بعد الاستيثاق.
+#
+# والكتلة تُكتب ‎{% comment %}…{% endcomment %}‎.
+multiline: list[str] = []
+for t in templates:
+    try:
+        lines = t.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        continue
+    for i, line in enumerate(lines, start=1):
+        if "{#" in line and "#}" not in line:
+            multiline.append(f"{t.name}:{i}")
+
+c("٣ب لا تعليق ‎{#‎ متعدّد الأسطر", not multiline,
+  " · ".join(multiline[:6]) or "")
+
+
 # ═══════════ ٤) الخروج استمارة لا رابط ═══════════
 #
 # ‏Django 5 يرفض GET على ``LogoutView`` ويردّ 405.

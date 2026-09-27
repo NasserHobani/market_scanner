@@ -60,8 +60,14 @@ def main() -> int:
           if hasattr(settings, "STORAGES") else "")
     print()
 
+    # ═══ كل قالبٍ يُترجَم أوّلاً ═══
+    #
+    # الطلبُ يمسّ ما يمسّه: صفحةٌ لا تُطلَب لا يُكتشَف عطبها حتى
+    # تُفتح. والترجمة تمرّ على الجميع في أجزاء من الثانية، وتمسك
+    # ``TemplateSyntaxError`` كلّه — لا نمطاً واحداً منه.
+    bad = _compile_templates()
+
     paths = sys.argv[1:] or DEFAULT_PATHS
-    bad = 0
 
     for path in paths:
         # ═══ ``raise_request_exception`` هي الفائدة كلّها ═══
@@ -99,6 +105,56 @@ def main() -> int:
         print("  خارج التطبيق: وكيلٌ عكسيّ أمامه، أو ترويسة Host لا")
         print("  تطابق DJANGO_ALLOWED_HOSTS.")
     return 1 if bad else 0
+
+
+def _compile_templates() -> int:
+    """يترجم كل قالبٍ في المشروع ويعيد عدد الساقط.
+
+    ═══ الترجمة لا التصيير ═══
+
+    ``get_template`` يحلّل الوسوم ولا ينفّذها — فلا يحتاج سياقاً
+    ولا قاعدةً ولا بيان بصمات. وهو ما يمسك:
+
+        ‏{# كتلةٌ متعدّدة الأسطر   →  ‎{#‎ يعلّق سطراً واحداً فقط،
+                                     فما بعده يُحلَّل قالباً
+        وسمٌ بلا ‎{% load %}‎      →  ``Invalid block tag``
+        ‎{% if %}‎ بلا ‎{% endif %}‎
+
+    وكلّها أخطاءٌ لا تظهر إلّا عند فتح الصفحة — وقد لا تُفتح حتى
+    ينشر المرء ويستعمل.
+    """
+    from django.template.loader import get_template
+    from django.template.exceptions import TemplateSyntaxError
+
+    root = Path(__file__).parent / "web"
+    files = sorted(root.rglob("templates/**/*.html"))
+    if not files:
+        print("⚠ لم يُعثر على قوالب — تخطّي الترجمة")
+        return 0
+
+    bad = 0
+    for f in files:
+        # الاسم كما يراه المحمّل: ما بعد ``templates/``
+        parts = f.parts
+        try:
+            i = len(parts) - 1 - parts[::-1].index("templates")
+        except ValueError:
+            continue
+        name = "/".join(parts[i + 1:])
+        try:
+            get_template(name)
+        except TemplateSyntaxError as exc:
+            bad += 1
+            print(f"   ✗ {name}")
+            print(f"     {exc}")
+        except Exception as exc:  # noqa: BLE001
+            bad += 1
+            print(f"   ✗ {name} — {type(exc).__name__}: {str(exc)[:160]}")
+
+    mark = "✓" if not bad else "✗"
+    print(f"── ترجمة القوالب: {mark} {len(files) - bad}/{len(files)}")
+    print()
+    return bad
 
 
 def _host(settings) -> str:
