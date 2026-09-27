@@ -65,6 +65,7 @@ STEPS = [
     ("فريمات كل سوق", [PY, "tests_tf_prefs.py"]),
     ("سياق البتكوين", [PY, "tests_btc_context.py"]),
     ("مسارا الجدولة", [PY, "tests_cron_lanes.py"]),
+    ("ربط المحفظة", [PY, "tests_wallet.py"]),
     ("فلتر راكب التشبّع", [PY, "tests_stoch_filter.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══

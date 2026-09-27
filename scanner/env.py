@@ -152,6 +152,11 @@ ALIASES: dict[str, str] = {
     "ALPACA_API_KEY": "ALPACA_API_KEY_ID",
     "ALPACA_SECRET_KEY": "ALPACA_API_SECRET_KEY",
     "TELEGRAM_BOT_TOKEN": "TELEGRAM_TOKEN",
+    # مفاتيح حساب Binance — للقراءة فقط. والاسمان شائعان في
+    # الشروح، فيُقبلان ويُوحَّدان هنا بدل أن يُقرأ أحدهما في موضعٍ
+    # والآخر في موضع.
+    "BINANCE_KEY": "BINANCE_API_KEY",
+    "BINANCE_SECRET": "BINANCE_API_SECRET",
 }
 
 

@@ -427,8 +427,28 @@ def _h_paper(payload: dict) -> str:
             f" · الرصيد {s['equity']} ({s['pnl_pct']:+}٪)")
 
 
+def _h_wallet(payload: dict) -> str:
+    """قواعد الخروج على المراكز الحقيقية — تنبيهٌ لا تنفيذ.
+
+    خفيفةٌ عمداً: سعرُ كل رمزٍ مُراقَب ثمّ مقارنة. لا مسح ولا
+    تدريب — فمكانها المسار الخفيف، وتأخّرُها دقائق يُفقد تنبيه
+    خروج.
+    """
+    from . import wallet_monitor
+
+    out = wallet_monitor.run_once()
+    if out.get("reason"):
+        return out["reason"]
+    msg = f"فُحصت {out['checked']} قاعدة · أُطلق {out['fired']}"
+    if out.get("events"):
+        msg += " · " + " · ".join(
+            f"{e['symbol']} {e['kind']}" for e in out["events"][:4])
+    return msg
+
+
 HANDLERS = {
     "scan": _h_scan,
+    "wallet": _h_wallet,
     "paper": _h_paper,
     "pes": _h_pes,
     "topdown": _h_topdown,
@@ -450,6 +470,7 @@ HANDLER_LABELS = {
     "market_sync": "مزامنة الشموع",
     "watch_monitor": "مراقبة الفرص",
     "settlement": "حسم الصفقات",
+    "wallet": "قواعد الخروج — المحفظة",
 }
 
 
@@ -941,6 +962,17 @@ def default_jobs() -> list[dict]:
         "interval_number": 2, "interval_type": "hours",
         "payload": {"timeframes": ["1h", "4h", "1d"]}, "priority": 30,
         "active": os.environ.get("SQUEEZE_SCAN", "1") == "1",
+    })
+    jobs.append({
+        # ═══ كل دقيقتين ═══
+        #
+        # تنبيه خروجٍ يتأخّر ربع ساعة قد يأتي بعد أن ضاع الفرق
+        # كلّه. وكلفتها سعرُ كل رمزٍ مُراقَب — وهي وزنٌ يسير.
+        "code": "wallet", "handler": "wallet",
+        "name": "قواعد الخروج — المحفظة",
+        "interval_number": 2, "interval_type": "minutes",
+        "payload": {}, "priority": 8,
+        "active": os.environ.get("WALLET_MONITOR", "1") == "1",
     })
     jobs.append({
         "code": "settlement", "handler": "settlement",

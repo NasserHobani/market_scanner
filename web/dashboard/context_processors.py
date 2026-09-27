@@ -67,6 +67,11 @@ NAV = (
      '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/>'
      '<circle cx="12" cy="12" r="2.5"/>',
      True),
+    ("wallet", "محفظتي — Binance", "/wallet/",
+     '<path d="M3 7h15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
+     '<path d="M3 7V6a2 2 0 0 1 2-2h11"/>'
+     '<circle cx="16.5" cy="12.5" r="1.2"/>',
+     True),
     ("paper", "المحفظة الورقية", "/paper/",
      '<path d="M3 7h18v12H3z"/><path d="M3 7l3-3h12l3 3"/>'
      '<circle cx="12" cy="13" r="2"/>',

@@ -210,6 +210,11 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # ═══ البوّابة بعد الاستيثاق وقبل كل شيء آخر ═══
+    #
+    # تحتاج ``request.user``، فلا بدّ أن تلي ``AuthenticationMiddleware``.
+    # وتسبق ما دونها كي لا يُنفَّذ عملٌ لطلبٍ سيُردّ.
+    "dashboard.authgate.LoginRequiredMiddleware",
     # رصد التزامن: يقيس مدّة كل طلب وكم كان يعمل معه.
     # كلفته مهملة (قفل وقاموس)، وبدونه تبقى شكوى «النظام يعلّق» بلا
     # رقم — والتخمين بين المسح والنموذج والقفل يُنتج تعديلات لا تُقاس.
@@ -218,6 +223,20 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
+
+# ═══ الاستيثاق ═══
+#
+# جلسةٌ طويلة عمداً: هذه لوحةٌ شخصية تُفتح يومياً، وانتهاءٌ كل
+# أسبوعين يعني إدخال كلمةٍ مرّتين في الشهر لا أكثر.
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
+SESSION_SAVE_EVERY_REQUEST = True
+# ‏HttpOnly افتراضيّ في Django، ويُذكر صراحةً كي لا يُطفأ سهواً:
+# جلسةٌ تقرؤها JavaScript تُسرَق بأيّ ثغرة عرضٍ واحدة.
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
 
 TEMPLATES = [
     {

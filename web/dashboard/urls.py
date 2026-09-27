@@ -1,7 +1,7 @@
 from django.urls import path
 
 from . import ai_live_views
-from . import concurrency, postmortem_views, btc_views, views
+from . import concurrency, postmortem_views, btc_views, views, wallet_views
 from . import widget_views
 from . import ai_explainability_views as ai_views
 from . import ai_local_views
@@ -166,6 +166,24 @@ urlpatterns = [
     path("api/btc/opinion/status/", btc_views.api_btc_opinion_status,
          name="api_btc_opinion_status"),
     path("search/", views.search, name="search"),
+    # ═══ المحفظة الحقيقية ═══
+    #
+    # قراءةٌ فقط. ولا مسار هنا يرسل أمراً إلى Binance — المادّة
+    # ١٣ §٣٣، والغياب أقوى من راية تمنع.
+    path("wallet/", wallet_views.wallet_page, name="wallet"),
+    path("api/wallet/", wallet_views.api_wallet, name="api_wallet"),
+    path("api/wallet/health/", wallet_views.api_wallet_health,
+         name="api_wallet_health"),
+    path("api/wallet/trades/", wallet_views.api_wallet_trades,
+         name="api_wallet_trades"),
+    path("api/wallet/orders/", wallet_views.api_wallet_orders,
+         name="api_wallet_orders"),
+    path("api/wallet/rule/save/", wallet_views.api_rule_save,
+         name="api_wallet_rule_save"),
+    path("api/wallet/rule/delete/", wallet_views.api_rule_delete,
+         name="api_wallet_rule_delete"),
+    path("api/wallet/check/", wallet_views.api_wallet_check,
+         name="api_wallet_check"),
     path("watches/", views.watches, name="watches"),
     path("api/watches/", views.api_watches, name="api_watches"),
     path("api/check/", views.api_check_now, name="api_check_now"),

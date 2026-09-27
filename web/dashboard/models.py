@@ -219,6 +219,69 @@ class Watch(models.Model):
         return price <= self.entry if self.side == "buy" else price >= self.entry
 
 
+class WalletRule(models.Model):
+    """قاعدة خروجٍ على مركزٍ حقيقيّ في Binance — تنبيهٌ لا تنفيذ.
+
+    ═══ لا تُرسَل أوامر ═══
+
+    المنصّة استشارية بنصّ المادّة ١٣ §٣٣. وهذه القاعدة تُنتج
+    **رسالة** عند بلوغها، والتنفيذ يبقى بيد صاحبه في تطبيق
+    Binance. ولا يوجد في المشروع كلّه سطرٌ يرسل أمراً.
+
+    ═══ والقمّة تُحفَظ هنا لا تُحسب ═══
+
+    التراجع من القمّة يحتاج ذاكرة: أعلى سعرٍ بلغه الرمز **بعد**
+    تفعيل القاعدة. وحسابُه من الشموع كل مرّة يعطي قمّة التاريخ
+    كلّه — فلا يتحقّق التنبيه أبداً، أو يتحقّق فوراً.
+
+    والقمّة تُحدَّث في مهمّةٍ دورية، وتُصفَّر عند تعديل القاعدة.
+    """
+
+    KINDS = [
+        ("stop", "وقف"),
+        ("target", "هدف"),
+        ("trail", "تراجع من القمّة"),
+        ("signal", "تحليل المنصّة"),
+    ]
+
+    symbol = models.CharField("الرمز", max_length=32, db_index=True)
+    asset = models.CharField("الأصل", max_length=16, blank=True)
+    kind = models.CharField("النوع", max_length=8, choices=KINDS,
+                            default="stop")
+    # وقف/هدف: سعر. وتراجع: نسبة مئوية. وإشارة: لا هذا ولا ذاك.
+    price = models.FloatField("السعر", null=True, blank=True)
+    pct = models.FloatField("النسبة ٪", null=True, blank=True)
+
+    active = models.BooleanField("فعّالة", default=True)
+    note = models.CharField("ملاحظة", max_length=160, blank=True)
+
+    #: أعلى سعرٍ بلغه بعد التفعيل — للتراجع وحده
+    peak = models.FloatField("القمّة منذ التفعيل", null=True, blank=True)
+    peak_at = models.DateTimeField("وقت القمّة", null=True, blank=True)
+
+    #: آخر إطلاق — يمنع التكرار كل دقيقة
+    fired_at = models.DateTimeField("آخر تنبيه", null=True, blank=True)
+    fired_price = models.FloatField("سعر التنبيه", null=True, blank=True)
+    fire_count = models.IntegerField("عدد التنبيهات", default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "قاعدة خروج"
+        verbose_name_plural = "قواعد الخروج"
+        ordering = ["symbol", "kind"]
+        constraints = [
+            # قاعدةٌ واحدة من كل نوعٍ لكل رمز: وقفان على رمزٍ واحد
+            # يعني تنبيهين متناقضين ولا يُعرف أيّهما المقصود.
+            models.UniqueConstraint(fields=["symbol", "kind"],
+                                    name="one_rule_per_symbol_kind"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.symbol} {self.get_kind_display()}"
+
+
 class Trade(models.Model):
     """صفقة متتبَّعة — ورقية أو يدوية.
 
