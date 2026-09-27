@@ -65,7 +65,11 @@ STEPS = [
     ("فريمات كل سوق", [PY, "tests_tf_prefs.py"]),
     ("سياق البتكوين", [PY, "tests_btc_context.py"]),
     ("مسارا الجدولة", [PY, "tests_cron_lanes.py"]),
+    # قبل البقيّة: اسم ملفٍّ ساكن خاطئ يُسقط الصفحة كلّها بـ500
+    # تحت ‎DEBUG=0‎، ولا يظهر محلّياً.
+    ("الملفّات الساكنة", [PY, "tests_assets.py"]),
     ("ربط المحفظة", [PY, "tests_wallet.py"]),
+    ("لماذا تنجح ولماذا تفشل", [PY, "tests_trade_case.py"]),
     ("فلتر راكب التشبّع", [PY, "tests_stoch_filter.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══

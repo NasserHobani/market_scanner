@@ -198,6 +198,25 @@ td[title]{cursor:help}
             <strong id="countdown-lg">—</strong></span>
           <a href="/settings/" class="ds-nav__icon{% if nav_page == 'settings' %} is-active{% endif %}"
              aria-label="الإعدادات" title="الإعدادات">⚙</a>
+          {% comment %}
+            ═══ الخروج استمارة لا رابط ═══
+
+            ‏``LogoutView`` في Django 5 **يرفض GET** ويردّ 405. ورابطٌ
+            عاديّ كان سيعطي صفحة خطأ بلا سبب ظاهر.
+
+            والسبب وجيه: خروجٌ بـGET يُنفَّذ بمجرّد أن يجلب شيءٌ
+            الرابط — صورةٌ في صفحةٍ أخرى تكفي لإخراجك.
+          {% endcomment %}
+          {% if user.is_authenticated %}
+          <form method="post" action="{% url 'logout' %}"
+                style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="ds-nav__icon"
+                    style="background:none;border:0;cursor:pointer"
+                    title="خروج — {{ user.username }}"
+                    aria-label="خروج">⏻</button>
+          </form>
+          {% endif %}
         </div>
       </div>
     </div>

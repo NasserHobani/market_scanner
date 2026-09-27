@@ -1,14 +1,41 @@
-{% load static %}<!doctype html>
+{% load assets %}<!doctype html>
 {# صفحةٌ قائمة بذاتها لا ترث القالب الأساسي: القالب يبني الشريط
-   الجانبي من معالج سياقٍ يستعلم القاعدة، ولا معنى لذلك قبل الدخول. #}
+   الجانبي من معالج سياقٍ يستعلم القاعدة، ولا معنى لذلك قبل الدخول.
+
+   ═══ والنمط بـ‎asset‎ لا ‎static‎ ═══
+
+   خزّانُ الملفّات الساكنة هنا ``CompressedManifestStaticFilesStorage``:
+   يبصم كل ملفّ باسمه، و``{% static %}`` على ملفٍّ **ليس في
+   البيان** يرمي ``ValueError`` — فتصير صفحة الدخول ‏500.
+
+   وهذا ما وقع: كتبتُ ‎dashboard/ds.css‎ وهو اسمٌ لا وجود له.
+   والملفّ الحقيقيّ ‎design-system.css‎ وهو ما يُحمّله القالب
+   الأساسي. #}
 <html lang="ar" dir="rtl" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1,
         viewport-fit=cover">
   <title>الدخول — ماسح الأسواق</title>
-  <link rel="stylesheet" href="{% static 'dashboard/ds.css' %}">
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.rtl.min.css">
+  <link rel="stylesheet" href="{% asset 'dashboard/design-system.css' %}">
   <style>
+    /* ═══ ألوانٌ احتياطية ═══
+
+       الشبكة التي تحجب cdnjs تترك الصفحة بلا Bootstrap. وصفحةُ
+       دخولٍ بلا نمط تبدو معطوبة، فيظنّ الناظر أنّ الخادم سقط.
+       وهذه تكفي لتُقرأ وتُملأ بلا أيّ ملفٍّ خارجيّ. */
+    body { background:#0f1115; color:#e6e6e6;
+           font-family:system-ui, "Segoe UI", sans-serif; }
+    .form-control, .form-label { display:block; }
+    .form-control { background:#161a20; color:inherit;
+                    border:1px solid #2a2f3a; border-radius:6px;
+                    padding:.5rem .75rem; }
+    .w-100 { width:100%; }
+    .mb-1 { margin-bottom:.25rem } .mb-3 { margin-bottom:1rem }
+    .mt-3 { margin-top:1rem } .text-center { text-align:center }
+    .small { font-size:.85rem } .muted { color:#9aa4b2 }
     body { display:flex; align-items:center; justify-content:center;
            min-height:100dvh; margin:0; padding:1rem; }
     .gate { width:min(24rem, 100%); }
@@ -17,6 +44,11 @@
     .gate input { width:100%; }
     /* ٤٤ بكسل: أصغر هدف لمسٍ يُصاب به بثقة على الجوّال */
     .gate input, .gate button { min-height:44px; }
+    /* وزرٌّ يعمل ولو لم يصل أيّ ملفّ نمطٍ خارجيّ */
+    .gate button { border:0; border-radius:6px; cursor:pointer;
+                   background:#3ddc97; color:#0f1115; font-weight:600; }
+    .gate code { background:#161a20; padding:.1rem .35rem;
+                 border-radius:4px; }
   </style>
 </head>
 <body>

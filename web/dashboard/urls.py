@@ -146,6 +146,8 @@ urlpatterns = [
     # تشريح الصفقات المحسومة: القياس فوري، والتفسير مهمّة خلفية
     path("api/concurrency/", concurrency.api_concurrency,
          name="api_concurrency"),
+    # الحجّة بوجهيها **قبل** الدخول — لماذا قد تنجح ولماذا قد تفشل
+    path("api/case/", postmortem_views.api_case, name="api_case"),
     path("api/postmortem/", postmortem_views.api_postmortem,
          name="api_postmortem"),
     path("api/postmortem/ai/", postmortem_views.api_postmortem_ai,

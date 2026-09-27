@@ -324,13 +324,107 @@ def api_trade_card(request, trade_id: int):
     if not card:
         return JsonResponse({"ok": False, "error": "الصفقة غير موجودة"},
                             status=404)
+    settled = str(t.get("status")) in ("won", "lost")
+
+    # ═══ التشريح الميكانيكي — حسابٌ لا نموذج ═══
+    #
+    # يظهر فوراً مع البطاقة. وهو يجيب عن سؤالٍ لا يجيب عنه تقييم
+    # القرار: **أين** كان الخلل — في الدخول أم في الخروج؟ صفقةٌ
+    # بلغت ‎+2.3R‎ ثمّ خسرت ليست كصفقةٍ لم تتحرّك قطّ، ونتيجتهما
+    # في الجدول واحدة.
+    anat = None
+    if settled:
+        from scanner.postmortem.anatomy import anatomy
+
+        anat = anatomy(t, winners=_winners())
+
     return JsonResponse({
         "ok": True,
         "card": card.to_dict(),
         # نصّ ما سيصل النموذج — يُعرَض ليرى المستخدم أن النتيجة محجوبة
         "prompt_preview": render_card(card),
-        "settled": str(t.get("status")) in ("won", "lost"),
+        "settled": settled,
+        "anatomy": anat,
+        # الحجّة بوجهيها من صفّ الدخول المجمَّد — لا من الحالة الآن
+        "case": _case_for(t),
     })
+
+
+def _winners() -> list[dict]:
+    """الصفقات الرابحة بمسارها — لسياق «هل كان الوقف ضيّقاً؟».
+
+    الخاسرة تُوقَف عند ‎−1R‎ بالتعريف فتوزيعها مقطوع. والرابحة
+    وحدها تقول كم يتذبذب هذا النظام قبل أن يعمل.
+    """
+    from .models import Trade
+
+    return list(Trade.objects.filter(status="won")
+                .exclude(worst_r=None)
+                .values("worst_r", "best_r", "r_multiple")[:500])
+
+
+def _settled_rows() -> list[dict]:
+    from .models import Trade
+
+    return list(Trade.objects.filter(status__in=["won", "lost"])
+                .values("status", "factors", "reasons", "grade", "rr",
+                        "score", "timeframe", "market")[:2000])
+
+
+def _case_for(trade: dict) -> dict | None:
+    """حجّة الدخول — ولا ترمي: هي إضافةٌ وصفية لا أساس الصفحة."""
+    from scanner.analysis import trade_case
+
+    try:
+        signal = {
+            "factors": trade.get("factors") or [],
+            "reasons": trade.get("reasons") or "",
+            "score": trade.get("score"),
+            "rr": trade.get("rr"),
+        }
+        return trade_case.build(signal, _settled_rows())
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)[:160]}
+
+
+def api_case(request):
+    """الحجّة بوجهيها لرمزٍ **قبل** الدخول.
+
+    ═══ ولماذا نقطةٌ منفصلة ═══
+
+    ``/api/trade/<id>/card/`` تقرأ صفقةً محفوظة. وهذه تقرأ أحدث
+    تحليلٍ لرمزٍ لم تدخله بعد — وهو السؤال الأنفع: «لماذا قد
+    تنجح ولماذا قد تفشل» يُسأل **قبل** لا بعد.
+    """
+    from scanner.analysis import trade_case
+    from scanner.strategies import pes_scan
+
+    symbol = (request.GET.get("symbol") or "").strip().upper()
+    market = (request.GET.get("market") or "crypto").strip()
+    if not symbol:
+        return JsonResponse({"ok": False, "reason": "بلا رمز"}, status=400)
+
+    row = None
+    try:
+        cached = pes_scan.load(market) or {}
+        for r in cached.get("rows", []):
+            if str(r.get("symbol", "")).upper() == symbol:
+                row = r
+                break
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse({"ok": False, "reason": str(exc)[:160]})
+
+    if row is None:
+        # ═══ الغياب يُعلَّل ═══
+        #
+        # «لا حجّة» تُقرأ «لا شيء يدعمها» — وهي هنا «لم يُمسح بعد».
+        return JsonResponse({
+            "ok": False,
+            "reason": f"لا تحليل محفوظ لـ{symbol} في {market} — "
+                      "شغّل مسح ما قبل الانفجار أوّلاً."})
+
+    return JsonResponse({"ok": True, "symbol": symbol,
+                         **trade_case.build(row, _settled_rows())})
 
 
 @require_POST

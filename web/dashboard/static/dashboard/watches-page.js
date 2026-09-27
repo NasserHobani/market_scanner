@@ -88,7 +88,12 @@
     { key: "rr", label: "R:R", align: "end", width: "6%" },
     { key: "grade", label: "تصنيف", width: "6%" },
     { key: "stoch", label: "التشبّع", width: "11%" },
-    { key: "reasons", label: "الأسباب", width: "10%" },
+    { key: "reasons", label: "الأسباب", width: "8%" },
+    // ═══ «لماذا؟» بوجهين ═══
+    //
+    // عمود «الأسباب» من طرفٍ واحد: يعرض ما يدعم ولا يعرض ما
+    // يضعف — فيُقرأ تأكيداً مهما كان محتواه.
+    { key: "why", label: "لماذا؟", width: "6%" },
     { key: "ai", label: "AI", width: "5%" },
   ];
 
@@ -119,6 +124,9 @@
         : '<span class="ds-text-muted">—</span>',
       stoch: stochCell(w),
       reasons: reasonChips(w.reasons),
+      why: '<button type="button" class="ds-btn ds-btn--sm w-case" ' +
+        'data-symbol="' + DS.esc(w.symbol) + '" data-market="' +
+        DS.esc(w.market || "crypto") + '">لماذا؟</button>',
       ai: window.AIExplain
         ? '<button type="button" class="ds-btn ds-btn--sm ai-watch-analyze" data-symbol="' +
           DS.esc(w.symbol) + '" data-market="' + DS.esc(w.market || "crypto") +
@@ -338,6 +346,41 @@
       })
       .catch(function () { tg.disabled = false; tg.textContent = old; });
   });
+
+  /* ═══ «لماذا؟» — الوجهان قبل الدخول ═══
+   *
+   * وهذا موضعُها الصحيح: السؤال «لماذا قد تنجح ولماذا قد تفشل»
+   * يُسأل **قبل** الدخول لا بعده. وبعده يصير تشريحاً. */
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest(".w-case");
+    if (!b) return;
+    var host = document.getElementById("case-panel");
+    var title = document.getElementById("case-symbol");
+    if (!host) return;
+    title.textContent = b.dataset.symbol;
+    host.parentElement.hidden = false;
+    host.innerHTML = '<span class="ds-text-muted small">يحسب…</span>';
+    host.parentElement.scrollIntoView({ behavior: "smooth",
+                                        block: "nearest" });
+    fetch("/api/case/?symbol=" + encodeURIComponent(b.dataset.symbol) +
+          "&market=" + encodeURIComponent(b.dataset.market),
+          { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (window.TradeCase) TradeCase.render(host, d);
+      })
+      .catch(function (err) {
+        host.innerHTML = '<span class="small down">' +
+          DS.esc(String(err).slice(0, 120)) + "</span>";
+      });
+  });
+
+  var cc = document.getElementById("case-close");
+  if (cc) {
+    cc.addEventListener("click", function () {
+      document.getElementById("case-panel").parentElement.hidden = true;
+    });
+  }
 
   renderStochChips();
   load();

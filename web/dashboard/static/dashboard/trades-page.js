@@ -497,7 +497,8 @@
       });
     }
     if (!body) {
-      panel("ai").innerHTML = adviceBlock(t) + decisionBox(t) +
+      panel("ai").innerHTML = adviceBlock(t) + caseBox(t) +
+        '<div style="height:var(--ds-sp-3)"></div>' + decisionBox(t) +
         '<div style="height:var(--ds-sp-3)"></div>' +
         DS.EmptyState({
           icon: "◈",
@@ -512,6 +513,9 @@
     }
     panel("ai").innerHTML =
       adviceBlock(t) +
+      // الأرقام قبل النموذج: التشريح يُحسب فوراً، والتقييم ينتظر دقيقتين
+      caseBox(t) +
+      '<div style="height:var(--ds-sp-3)"></div>' +
       decisionBox(t) +
       '<div style="height:var(--ds-sp-3)"></div>' +
       DS.SectionCard({ title: "قراءة الإشارة عند الرصد", body: body }) +
@@ -555,7 +559,40 @@
     });
   }
 
+  /* ── التشريح والحجّة — حسابٌ فوريّ، بلا نموذج ──
+   *
+   * تقييم جودة القرار ينتظر نموذج لغة دقيقتين. وهذان يُحسبان في
+   * أجزاء من الثانية ويظهران فوراً، ويجيبان عن سؤالٍ آخر:
+   *
+   *     التشريح   **أين** كان الخلل — دخولاً أم خروجاً؟
+   *     الحجّة     ما كان يدعمها وما كان يضعفها، بنسب سجلّك
+   *
+   * والأرقام أوّلاً دائماً: إن تعارضت مع تفسير النموذج فالأرقام
+   * هي الحقيقة — وهي القاعدة المكتوبة أعلى ``postmortem_views``.
+   */
+  function caseBox(t) {
+    return DS.SectionCard({
+      title: "التشريح والحجّة",
+      body:
+        '<div id="anat-out" class="mb-3"></div>' +
+        '<div id="case-out"></div>',
+    });
+  }
+
+  function loadCase(t) {
+    fetch("/api/trade/" + t.id + "/card/", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || !window.TradeCase) return;
+        TradeCase.renderAnatomy(document.getElementById("anat-out"),
+                                d.anatomy);
+        TradeCase.render(document.getElementById("case-out"), d.case);
+      })
+      .catch(function () {});
+  }
+
   function bindDecision(t) {
+    loadCase(t);
     var btn = document.getElementById("dq-btn");
     if (!btn) return;
     btn.addEventListener("click", function () {

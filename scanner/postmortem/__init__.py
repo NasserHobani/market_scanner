@@ -16,6 +16,17 @@
 """
 from __future__ import annotations
 
+# ═══ ثلاثة فحوص لا واحد ═══
+#
+#     anatomy.py     ما جرى لهذه الصفقة ميكانيكياً — أين الخلل؟
+#     single.py      هل كان القرار سليماً؟ — والنتيجة محجوبة
+#     separation.py  ما يفصل الرابح عن الخاسر في المجموعة
+#
+# والأوّل أُضيف أخيراً لأنّ بين الاثنين فجوة: «خسرت» تجمع صفقةً
+# بلغت ‎+2.3R‎ ثمّ انعكست وصفقةً لم تتحرّك قطّ — وهما عطبان
+# مختلفان، ونتيجتهما في الجدول واحدة.
+
+from .anatomy import KIND_LABELS, anatomy, classify, stop_context
 from .narrative import SYSTEM_AR, build_prompt, render_report
 from .single import (
     OUTCOME_KEYS, TradeCard, build_card, build_single_prompt, render_card,
@@ -27,6 +38,7 @@ from .separation import (
 )
 
 __all__ = [
+    "KIND_LABELS", "anatomy", "classify", "stop_context",
     "ENTRY_FIELDS", "OUTCOME_FIELDS", "FactorSeparation", "PostmortemReport",
     "SYSTEM_AR", "TagSeparation", "analyze", "build_prompt", "extract_tags",
     "render_report", "wilson_interval",
