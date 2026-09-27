@@ -87,8 +87,9 @@
     { key: "target", label: "الهدف", align: "end", width: "9%" },
     { key: "rr", label: "R:R", align: "end", width: "6%" },
     { key: "grade", label: "تصنيف", width: "6%" },
-    { key: "reasons", label: "الأسباب", width: "12%" },
-    { key: "ai", label: "AI", width: "6%" },
+    { key: "stoch", label: "التشبّع", width: "11%" },
+    { key: "reasons", label: "الأسباب", width: "10%" },
+    { key: "ai", label: "AI", width: "5%" },
   ];
 
   function watchKey(w) {
@@ -116,6 +117,7 @@
             tone: w.grade === "A" ? "success" : w.grade === "B" ? "info" : "neutral",
           })
         : '<span class="ds-text-muted">—</span>',
+      stoch: stochCell(w),
       reasons: reasonChips(w.reasons),
       ai: window.AIExplain
         ? '<button type="button" class="ds-btn ds-btn--sm ai-watch-analyze" data-symbol="' +
@@ -222,7 +224,60 @@
    *
    * والنقل بأخذ المفاتيح التي تخصّ الترشيح وحدها: تمرير العنوان
    * كلّه يُرسل مفاتيح واجهة (مثل ‎tab‎) لا يعرفها الخادم. */
-  var FILTER_KEYS = ["symbol", "tf", "market", "from", "to"];
+  var FILTER_KEYS = ["symbol", "tf", "market", "from", "to", "stoch"];
+
+  /* ═══ رقائق حالة التشبّع ═══
+   *
+   * ‏StochRSI فوق ٨٠ يُقرأ «بِع» — وهي قراءة خاطئة في اتّجاهٍ
+   * صاعد: المؤشّر يبقى هناك أسابيع. ولهذا يحمل الوصف تحذيراً
+   * نصّياً منذ بنائه، وهذه الرقيقة تحوّله إلى فرز.
+   *
+   * و«راكب» ≠ «فوق ٨٠»: الثانية تجمع الركوب والإنهاك، وهما
+   * نقيضان — استمرارٌ وقمّة. فاشتُرط الاتّجاه. */
+  var STOCH_CHIPS = [
+    { key: "", label: "الكل" },
+    { key: "riding", label: "راكب التشبّع", tone: "success",
+      hint: "تشبّع شرائي واتّجاه صاعد — استمرار لا قمّة" },
+    { key: "exhausted", label: "تشبّع بلا اتّجاه", tone: "warn",
+      hint: "فوق ٨٠ والاتّجاه ليس صاعداً — تحذير حقيقي" },
+    { key: "oversold", label: "تشبّع بيعي", tone: "neutral" },
+  ];
+
+  function renderStochChips() {
+    var host = document.getElementById("stoch-chips");
+    if (!host) return;
+    var cur = new URLSearchParams(window.location.search).get("stoch") || "";
+    host.innerHTML = STOCH_CHIPS.map(function (c) {
+      var u = new URLSearchParams(window.location.search);
+      if (c.key) u.set("stoch", c.key); else u.delete("stoch");
+      var q = u.toString();
+      return '<a class="ds-btn ds-btn--sm' +
+        (c.key === cur ? " active" : "") + '" href="' +
+        window.location.pathname + (q ? "?" + q : "") + '"' +
+        (c.hint ? ' title="' + DS.esc(c.hint) + '"' : "") + ">" +
+        DS.esc(c.label) + "</a>";
+    }).join(" ");
+  }
+
+  /* الحالة تُعرَض على كل صفّ سواء رُشّح أم لا: فلترٌ يخفي معياره
+     يُقرأ سحراً، والقارئ لا يملك ما يصحّح به فهمه. */
+  function stochCell(w) {
+    var s = w.stoch || {};
+    if (!s.ok) {
+      return '<span class="ds-text-muted" title="' +
+        DS.esc(s.why || "غير محسوب") + '">—</span>';
+    }
+    var tone = s.state === "riding" ? "success"
+      : s.state === "exhausted" ? "warn"
+        : s.state === "oversold" ? "info" : "neutral";
+    var label = s.state === "riding" ? "راكب"
+      : s.state === "exhausted" ? "منهَك"
+        : s.state === "oversold" ? "بيعي" : "وسط";
+    return DS.StatusBadge({ label: label + " " + DS.ltr(s.k), tone: tone }) +
+      '<span class="ds-text-xs ds-text-muted d-block" title="' +
+      DS.esc((s.text || "") + " " + (s.note || "")) + '">' +
+      DS.esc(s.label || "") + "</span>";
+  }
 
   function filterQuery() {
     var src = new URLSearchParams(window.location.search);
@@ -284,6 +339,7 @@
       .catch(function () { tg.disabled = false; tg.textContent = old; });
   });
 
+  renderStochChips();
   load();
   EVERY(20000, load);
 })();

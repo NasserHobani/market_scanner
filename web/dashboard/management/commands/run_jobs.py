@@ -43,6 +43,17 @@ class Command(BaseCommand):
                             help="أنشئ المهامّ الافتراضية الناقصة")
         parser.add_argument("--stagger", action="store_true",
                             help="وزّع مهامّ المسح على دقائق متتالية")
+        # ═══ المساران ═══
+        #
+        # الخفيف (حسم · مراقبة · محفظة) يجب ألّا ينتظر خلف المسح
+        # والمزامنة. وكان ينتظر: دورةٌ واحدة تسلسلية، فمهمّةُ
+        # الدقائق الثلاث تعمل كل أربعين.
+        parser.add_argument("--lane", choices=["light", "heavy", "all"],
+                            default="all",
+                            help="قصر الدفعة على مسار: خفيف أو ثقيل")
+        parser.add_argument("--budget", type=float, default=0.0,
+                            metavar="SECONDS",
+                            help="أقصى زمنٍ لبدء مهامّ جديدة (0 = بلا حدّ)")
 
     def handle(self, *args, **opts):
         from django.utils import timezone
@@ -110,8 +121,11 @@ class Command(BaseCommand):
         # هذا الأمر طوال المسح — وأثرُ ثلاثين سطراً لا يقول ذلك.
         from django.db import OperationalError
 
+        lane = opts.get("lane") or "all"
         try:
-            done = cron.run_due(block=True)
+            done = cron.run_due(block=True,
+                                lane=None if lane == "all" else lane,
+                                budget=float(opts.get("budget") or 0.0))
         except OperationalError as exc:
             if "locked" not in str(exc).lower():
                 raise
@@ -130,7 +144,7 @@ class Command(BaseCommand):
                 "فتُمسح السوق مرّتين وتُفتح الصفقة الورقية مرّتين."
             ) from exc
         if not done:
-            self.stdout.write("لا مهمّة مستحقّة")
+            self.stdout.write(f"لا مهمّة مستحقّة ({lane})")
             return
         for r in done:
             self.stdout.write(f"{r['code']}: {r.get('status')} · "

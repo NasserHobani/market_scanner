@@ -656,7 +656,53 @@ def due_jobs():
         active=True, next_run__lte=timezone.now()).order_by("priority", "id"))
 
 
-def claim_due(*, limit: int = 40) -> list:
+# ═══════════════════════════════════════════════════════════════
+#  المساران — وسببُ التأخّر الذي كان
+# ═══════════════════════════════════════════════════════════════
+#
+# ═══ العطب ═══
+#
+# ``run_due`` كان يشغّل كل مستحقٍّ **بالتسلسل في عمليةٍ واحدة**،
+# وحلقة ‎docker-scheduler.sh‎ تنتظر الدفعة كلّها قبل أن تنام. فطولُ
+# الدورة = مجموع مُدد كل المهامّ المستحقّة.
+#
+# والترتيب كان بالأولوية: watch(5) ← sync(10) ← settlement(15) ←
+# scan(20) ← topdown(24) ← pes(25) ← squeeze(30) ← paper(35).
+#
+# فـ‏``paper`` — فترتها ربع ساعة — تنتظر خلف المسح والمزامنة
+# والانضغاط. و``settlement`` فترتها **ثلاث دقائق** ولا تستطيع أن
+# تعمل أكثر من مرّةٍ واحدة في الدورة: فإن دامت الدورة أربعين دقيقة
+# صارت كل أربعين — متأخّرةً ثلاثة عشر ضعفاً.
+#
+# ولا شيء في الشاشة يقول ذلك: كل مهمّة «نجحت»، وكلّها متأخّرة.
+#
+# ═══ العلاج ═══
+#
+# فصلُ الثقيل عن الخفيف. الخفيف كل دقيقة بلا انتظار، والثقيل في
+# حلقةٍ موازية بقفلٍ يمنع تراكمه على نفسه.
+#
+# والتصنيف بالمُعالِج لا بالأولوية: الأولوية ترتيبٌ داخل المسار،
+# والوزن خاصّةٌ ثابتة في المهمّة نفسها.
+
+#: مهامّ تُقاس بالدقائق — مسحٌ، مزامنة، تدريب
+HEAVY_HANDLERS = frozenset({
+    "scan", "market_sync", "pes", "topdown", "squeeze", "train_predictor",
+})
+
+LANES = ("light", "heavy", "all")
+
+
+def lane_of(handler: str) -> str:
+    """مسارُ هذا المُعالِج.
+
+    وما لا يُعرف يُعدّ **خفيفاً**: مُعالِجٌ جديد يُضاف بلا تصنيف
+    يجب أن يعمل في موعده، لا أن يُدفن خلف المسح. وإن ثقُل ظهر في
+    ‎tools_doctor_cron.py‎ بمدّته فيُنقل.
+    """
+    return "heavy" if handler in HEAVY_HANDLERS else "light"
+
+
+def claim_due(*, limit: int = 40, lane: str | None = None) -> list:
     """يحجز المستحقّ ويُقدّم موعده **قبل** التشغيل — كما يفعل أودو.
 
     ═══ لماذا التقديم قبل العمل ═══
@@ -705,6 +751,12 @@ def claim_due(*, limit: int = 40) -> list:
             qs = (ScheduledJob.objects
                   .filter(active=True, next_run__lte=now)
                   .order_by("priority", "id"))
+            # التصفية في القاعدة لا في بايثون: ``limit`` يُقصّ بعد
+            # الجلب، فتصفيةٌ لاحقة كانت ستُنقص الدفعة بلا سبب.
+            if lane in ("light", "heavy"):
+                heavy = sorted(HEAVY_HANDLERS)
+                qs = (qs.exclude(handler__in=heavy) if lane == "light"
+                      else qs.filter(handler__in=heavy))
             if skip_locked:
                 qs = qs.select_for_update(skip_locked=True)
             for job in list(qs)[:limit]:
@@ -723,16 +775,39 @@ def claim_due(*, limit: int = 40) -> list:
     return claimed
 
 
-def run_due(*, block: bool = False) -> list[dict]:
+def run_due(*, block: bool = False, lane: str | None = None,
+            budget: float = 0.0) -> list[dict]:
     """يشغّل كل مستحقّ.
 
     ``block=True`` للتشغيل الخارجي (أمر ``run_jobs``): ينتظر
     الانتهاء ثمّ يخرج، وإلّا مات الخيط مع العملية قبل أن يعمل.
+
+    ``lane`` يقصر الدفعة على مسارٍ واحد — انظر ``lane_of``.
+
+    ═══ و``budget`` يُفحَص قبل الحجز لا بعده ═══
+
+    ``claim_due`` **يقدّم الموعد لحظة الحجز**. فحجزُ ستّ مهامّ ثمّ
+    التوقّف عند الثالثة لنفاد الوقت يعني أنّ الثلاث الباقيات
+    تقدّمت مواعيدها ولم تعمل — تخطٍّ صامت، وهو أسوأ من التأخّر
+    لأنّه لا يظهر في شيء.
+
+    فالحجز واحدةً واحدة، والميزانية تُفحَص **قبل** كل حجز. وما لم
+    يُحجَز يبقى مستحقّاً للدورة التالية.
     """
     out = []
-    # الحجز لا القراءة: ``claim_due`` يقدّم الموعد ويقفل الصفّ،
-    # فلا تراها عمليةٌ أخرى مستحقّةً وهي تعمل عندنا.
-    for job in claim_due():
+    started = time.monotonic()
+    while True:
+        # ═══ الميزانية قبل الحجز ═══
+        if budget > 0 and (time.monotonic() - started) >= budget:
+            log.info("نفدت ميزانية الدورة (%.0fث) — الباقي للدورة التالية",
+                     budget)
+            break
+        # الحجز لا القراءة: ``claim_due`` يقدّم الموعد ويقفل الصفّ،
+        # فلا تراها عمليةٌ أخرى مستحقّةً وهي تعمل عندنا.
+        batch = claim_due(limit=1, lane=lane)
+        if not batch:
+            break
+        job = batch[0]
         if block:
             # حزامُ أمانٍ ثانٍ: ``run_job`` يَعِد بألّا يرمي، وهذا
             # يضمن الوعد ولو نُقض. فمهمّةٌ واحدة يجب ألّا تمنع

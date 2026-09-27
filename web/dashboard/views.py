@@ -1081,17 +1081,51 @@ def _watch_filters(request) -> dict:
     الشاشتين، و«btc» تجد ‏BTCUSDT في الشاشتين. مرشّحٌ يعني شيئاً
     هنا وشيئاً هناك أسوأ من غيابه.
     """
+    from scanner.analysis import stoch_watch
+
     tf = request.GET.get("tf") or ""
     market = request.GET.get("market") or ""
     start, end = _date_range(request)
+    # ═══ حالة التشبّع ═══
+    #
+    # لا تُطبَّق في القاعدة: ``Watch`` لا يحمل الحقل، وحسابه من
+    # الشموع المخزَّنة. فيُرشَّح بعد الجلب.
+    stoch = (request.GET.get("stoch") or "").strip()
     return {
         "symbol": _clean_symbol(request.GET.get("symbol")),
         "timeframe": tf if tf in UI_TIMEFRAMES else "",
         "market": market if market in MARKETS else "",
+        "stoch": stoch if stoch in stoch_watch.STATES else "",
         "date_from": start.isoformat() if start else "",
         "date_to": end.isoformat() if end else "",
         "_start": start, "_end": end,
     }
+
+
+def _with_stoch(rows: list, f: dict) -> list:
+    """يُلحق حالة التشبّع بكل صفّ، ويرشّح بها إن طُلبت.
+
+    ═══ والترشيح بعد الإلحاق لا قبله ═══
+
+    الحالة تُعرَض على كل صفّ سواء رُشّح أم لا — فالقارئ يرى لماذا
+    بقي هذا وسقط ذاك. وفلترٌ يخفي معياره يُقرأ سحراً.
+    """
+    from scanner.analysis import stoch_watch
+
+    out = []
+    for r in rows:
+        st = stoch_watch.read(r.get("market", ""), r.get("symbol", ""),
+                              r.get("timeframe", ""))
+        r["stoch"] = st
+        # ═══ والمجهول لا يمرّ ═══
+        #
+        # رمزٌ بلا شموعٍ كافية حالتُه «لا أعرف» لا «مطابق». وإمراره
+        # يُطيل القائمة بما لم يُفحَص — وهو ما يجعل الفلتر يبدو
+        # أنجح ممّا هو.
+        if f.get("stoch") and st.get("state") != f["stoch"]:
+            continue
+        out.append(r)
+    return out
 
 
 def _apply_watch_filters(qs, f):
@@ -1133,6 +1167,7 @@ def api_watches(request):
     # مراقبةٌ سُلّحت قبل الحظر تبقى في القاعدة — فتُحجب من العرض.
     # ولا تُحذف: الحظر قد يُرفع، والحذف لا رجعة فيه.
     rows = blocklist.drop_blocked(rows)
+    rows = _with_stoch(rows, f)
     rows.sort(key=lambda r: abs(r["distance_pct"]) if r["distance_pct"] is not None else 999)
     # ``total`` قبل الترشيح: بلا هذا العدد يُقرأ الجدول الفارغ
     # «لا مراقبات» بينما هناك أربعون وواحدةٌ لا تطابق المرشّح.
@@ -1144,7 +1179,8 @@ def api_watches(request):
                          "total": total, "shown": len(rows),
                          "filtered": bool(f["symbol"] or f["timeframe"]
                                           or f["market"] or f["date_from"]
-                                          or f["date_to"])})
+                                          or f["date_to"] or f["stoch"]),
+                         "stoch": f["stoch"]})
 
 
 def _monitor_status() -> dict:

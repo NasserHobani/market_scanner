@@ -31,6 +31,24 @@
 
 {% include "dashboard/_filterbar.html" with filters=filters timeframes=timeframes market_options=market_options date_label="تاريخ الرصد" %}
 
+{% comment %}
+  ═══ فرزٌ بحالة التشبّع ═══
+
+  ‏StochRSI فوق ٨٠ يُقرأ «بِع» — وهي قراءة خاطئة في اتّجاهٍ صاعد:
+  المؤشّر يبقى هناك أسابيع، ومن باع عندها باع أوّل الحركة. والوصف
+  يحمل هذا التحذير نصّاً منذ بنائه؛ وهذه الرقائق تحوّله إلى فرز.
+
+  و«راكب» ليست «فوق ٨٠»: الثانية تجمع الركوب والإنهاك، وهما
+  نقيضان — استمرارٌ وقمّة. فاشتُرط الاتّجاه الصاعد.
+{% endcomment %}
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+  <span class="ds-text-xs ds-text-muted">حالة StochRSI:</span>
+  <div id="stoch-chips" class="d-flex gap-1 flex-wrap"></div>
+  <span class="ds-text-xs ds-text-muted">
+    تُحسب على الشمعة المغلقة من الشموع المخزَّنة — لا طلب شبكة.
+  </span>
+</div>
+
 {# Summary first: how close is anything to triggering, before the table #}
 <div class="ds-widget" id="w-watch-summary" data-state="loading">
   <div class="ds-widget__skeleton ds-stat-grid">

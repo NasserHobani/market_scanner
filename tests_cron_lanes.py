@@ -1,0 +1,147 @@
+# -*- coding: utf-8 -*-
+"""مسارا الجدولة — ولماذا تأخّر كلُّ شيء.
+
+═══ العطب المقيس ═══
+
+``run_due`` كان يشغّل كل مستحقٍّ **بالتسلسل في عمليةٍ واحدة**،
+وحلقة ‎docker-scheduler.sh‎ تنتظر الدفعة كلّها قبل أن تنام. فطولُ
+الدورة = مجموع مُدد كل المهامّ المستحقّة.
+
+والترتيب بالأولوية: watch(5) ← sync(10) ← settlement(15) ←
+scan(20) ← topdown(24) ← pes(25) ← squeeze(30) ← paper(35).
+
+فـ``settlement`` فترتها **ثلاث دقائق** ولا تستطيع أن تعمل أكثر
+من مرّةٍ في الدورة. ودورةٌ فيها مسحُ الكريبتو (اثنتا عشرة دقيقة
+مقيسة) ومزامنةٌ بنحو ١٩٠٠ طلب تبلغ أربعين دقيقة — فصارت مهمّةُ
+الثلاث دقائق كل أربعين. متأخّرةً ثلاثة عشر ضعفاً.
+
+ولا شيء يقول ذلك: كل مهمّة «نجحت»، وحالتُها خضراء.
+
+═══ والفخّ في الإصلاح ═══
+
+``claim_due`` **يقدّم الموعد لحظة الحجز**. فحجزُ ستٍّ ثمّ التوقّف
+عند الثالثة لنفاد الميزانية يعني أنّ الثلاث الباقيات تقدّمت
+مواعيدها ولم تعمل — تخطٍّ صامت، وهو أسوأ من التأخّر لأنّه لا
+يظهر في شيء.
+
+فالحجز واحدةً واحدة، والميزانية تُفحَص **قبل** كل حجز.
+
+═══ وفخٌّ ثانٍ في bash ═══
+
+``docker stop`` يرسل SIGTERM إلى العملية الأولى وحدها. وحلقة
+المسار الثقيل في الخلفية بنسختها الخاصّة من ``running`` — فلا
+تراها تتغيّر، وتبقى تعمل بعد أمر التوقّف.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "web"))
+
+from tests_helpers import Checks, body_of, code_of, source_of  # noqa: E402
+
+c = Checks(__doc__.strip().splitlines()[0])
+
+CRON = ROOT / "web" / "dashboard" / "cron.py"
+code = code_of(CRON)
+
+
+# ═══════════ ١) التصنيف ═══════════
+import importlib.util as _ilu  # noqa: E402
+
+_spec = _ilu.spec_from_file_location("_lane_probe", CRON)
+_mod = _ilu.module_from_spec(_spec)
+try:
+    _spec.loader.exec_module(_mod)
+    _ok = True
+except Exception as exc:  # noqa: BLE001
+    _ok = False
+    c("١ تحميل الوحدة", False, f"{type(exc).__name__}: {str(exc)[:70]}")
+
+if _ok:
+    c("١ الثقيل ثقيل", _mod.lane_of("scan") == "heavy")
+    c("  والمزامنة ثقيلة", _mod.lane_of("market_sync") == "heavy")
+    c("  والانضغاط ثقيل", _mod.lane_of("squeeze") == "heavy")
+    c("  والحسم خفيف", _mod.lane_of("settlement") == "light")
+    c("  والمراقبة خفيفة", _mod.lane_of("watch_monitor") == "light")
+    c("  والمحفظة خفيفة", _mod.lane_of("paper") == "light")
+    # ═══ والمجهول خفيف ═══
+    #
+    # مُعالِجٌ جديد يُضاف بلا تصنيف يجب أن يعمل في موعده، لا أن
+    # يُدفن خلف المسح. وإن ثقُل ظهر في الأداة بمدّته فيُنقل.
+    c("  والمجهول خفيف", _mod.lane_of("لا_يوجد") == "light")
+
+
+# ═══════════ ٢) الميزانية قبل الحجز ═══════════
+#
+# وهذا هو الفرق بين «تأخّرت» و«لم تعمل ولا أحد يدري».
+rd = body_of(CRON, "run_due")
+c("٢ الميزانية تُفحَص قبل الحجز",
+  rd.index("budget") < rd.index("claim_due")
+  if ("budget" in rd and "claim_due" in rd) else False, rd[:200])
+c("  والحجز واحدةً واحدة", "claim_due(limit=1" in rd, rd[:300])
+c("  والمسار يُمرَّر", "lane=lane" in rd)
+c("  والتوقّف يُسجَّل", "نفدت ميزانية" in source_of(CRON))
+
+
+# ═══════════ ٣) التصفية في القاعدة ═══════════
+cl = body_of(CRON, "claim_due")
+c("٣ المسار يصفّي الاستعلام", "handler__in" in cl, cl[:300])
+c("  والخفيف يستثني الثقيل", "exclude(handler__in" in cl)
+# ‏``limit`` يُقصّ بعد الجلب: تصفيةٌ في بايثون كانت ستُنقص الدفعة
+c("  والتصفية قبل القصّ",
+  cl.index("handler__in") < cl.index("[:limit]")
+  if ("handler__in" in cl and "[:limit]" in cl) else False)
+# وبلا مسار يبقى السلوك كما كان
+c("  وبلا مسار لا تصفية", 'lane in ("light", "heavy")' in cl)
+# والتقديم قبل التشغيل باقٍ — لا يُنقض بهذا الإصلاح
+c("  والتقديم قبل التشغيل باقٍ", "next_run = advance(" in cl)
+c("  و‎skip_locked‎ باقٍ", "skip_locked=True" in cl)
+
+
+# ═══════════ ٤) الأمر يقبل المسار ═══════════
+cmd = code_of(ROOT / "web" / "dashboard" / "management" / "commands"
+              / "run_jobs.py")
+c("٤ ‎--lane‎ موجود", '"--lane"' in cmd)
+c("  و‎--budget‎ كذلك", '"--budget"' in cmd)
+# والافتراض «الكل»: من ينادي الأمر مجرّداً يبقى سلوكه كما كان
+c("  والافتراض الكلّ", 'default="all"' in cmd)
+c("  و«الكل» تعني بلا تصفية", 'None if lane == "all" else lane' in cmd)
+
+
+# ═══════════ ٥) حلقتان لا واحدة ═══════════
+sh = source_of(ROOT / "docker-scheduler.sh")
+c("٥ حلقةٌ للثقيل", "heavy_loop()" in sh)
+c("  تعمل في الخلفية", "heavy_loop &" in sh)
+c("  والخفيف كل فترة", "--lane light" in sh)
+c("  والثقيل بميزانية", "--lane heavy --budget" in sh)
+# ═══ والإشارة تُمرَّر ═══
+#
+# ‏SIGTERM يبلغ العملية الأولى وحدها. والابن بنسخته الخاصّة من
+# ``running`` — فلا يتوقّف أبداً.
+c("  والإشارة تبلغ الابن", 'kill -TERM "$HEAVY_PID"' in sh)
+c("  وللابن علَمُه", "h_running" in sh)
+# ودورةٌ فارغة لا تصير حلقةً محمومة
+c("  والفارغة تنتظر أدنى", "h_elapsed" in sh and "sleep $(( 30" in sh)
+# والنبضة باقية: فحص الصحّة يقرؤها
+c("  ونبضة الحياة باقية", "/tmp/scheduler-heartbeat" in sh)
+
+
+# ═══════════ ٦) أداةُ قياسٍ لا تخمين ═══════════
+#
+# «متأخّرة» وحدها لا تقول أيّ مهمّة تأكل الدورة.
+doc = ROOT / "tools_doctor_cron.py"
+c("٦ أداة التشخيص موجودة", doc.exists())
+if doc.exists():
+    dt = source_of(doc)
+    c("  تقيس التأخّر بالموعد", "next_run" in dt)
+    c("  وتحسب الحِمل", "المدّة ÷ الفترة" in dt or "share" in dt)
+    # مهمّةٌ مدّتها أطول من فترتها لا تلحق أبداً
+    c("  وتكشف المستحيلة", "أطول من فترتها" in dt)
+    c("  وتفصل المسارين", "lane_of" in dt)
+
+
+sys.exit(c.report())
