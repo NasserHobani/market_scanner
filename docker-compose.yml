@@ -56,6 +56,20 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # ═══ متغيّر بورتينر لا يدخل الحاوية وحده ═══
+      #
+      # خانة ``Environment variables`` في بورتينر تملأ متغيّرات
+      # **الاستيفاء** — أي ما يُستبدَل في ``${...}`` داخل هذا
+      # الملفّ. ولا يصل شيءٌ منها إلى العملية داخل الحاوية ما لم
+      # يُذكر هنا صراحةً.
+      #
+      # فمن ضبط المفتاح في بورتينر ظنّه واصلاً، والتطبيق يقرأ
+      # فراغاً ويقول «غير مضبوطة» — وكلاهما صادق.
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      REQUIRE_LOGIN: ${REQUIRE_LOGIN:-1}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"
@@ -98,6 +112,20 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # ═══ متغيّر بورتينر لا يدخل الحاوية وحده ═══
+      #
+      # خانة ``Environment variables`` في بورتينر تملأ متغيّرات
+      # **الاستيفاء** — أي ما يُستبدَل في ``${...}`` داخل هذا
+      # الملفّ. ولا يصل شيءٌ منها إلى العملية داخل الحاوية ما لم
+      # يُذكر هنا صراحةً.
+      #
+      # فمن ضبط المفتاح في بورتينر ظنّه واصلاً، والتطبيق يقرأ
+      # فراغاً ويقول «غير مضبوطة» — وكلاهما صادق.
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      REQUIRE_LOGIN: ${REQUIRE_LOGIN:-1}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"

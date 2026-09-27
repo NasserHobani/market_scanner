@@ -240,6 +240,16 @@
       .then(function (d) {
         if (!d) return;
         if (!d.ok) {
+          /* ═══ الهيكل العظميّ لا يبقى يدور ═══
+           *
+           * الملخّص كان يبقى في حالة ``loading`` إلى الأبد حين
+           * تفشل القراءة: أربعة مستطيلات رمادية تنبض تحت رسالة
+           * خطأ. فيُقرأ «ما زال يحمّل» لا «توقّف» — وينتظر
+           * القارئ شيئاً لن يأتي. */
+          summary.setAttribute("data-state", "ready");
+          summary.querySelector(".ds-widget__content").innerHTML =
+            '<p class="small ds-text-muted">لا أرقام — ' +
+            DS.esc(d.why || "تعذّرت القراءة") + "</p>";
           table.setAttribute("data-state", "error");
           var box = table.querySelector(".ds-widget__error");
           if (box) { box.hidden = false; box.textContent = d.why || "تعذّر"; }
@@ -255,6 +265,7 @@
         feedSymbols();
       })
       .catch(function (e) {
+        summary.setAttribute("data-state", "ready");
         table.setAttribute("data-state", "error");
         var box = table.querySelector(".ds-widget__error");
         if (box) { box.hidden = false; box.textContent = String(e).slice(0, 140); }
