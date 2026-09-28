@@ -180,6 +180,8 @@ urlpatterns = [
          name="api_wallet_trades"),
     path("api/wallet/orders/", wallet_views.api_wallet_orders,
          name="api_wallet_orders"),
+    path("api/wallet/closed/", wallet_views.api_wallet_closed,
+         name="api_wallet_closed"),
     path("api/wallet/rule/save/", wallet_views.api_rule_save,
          name="api_wallet_rule_save"),
     path("api/wallet/rule/delete/", wallet_views.api_rule_delete,

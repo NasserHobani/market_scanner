@@ -66,6 +66,28 @@
   <div class="ds-widget__error" hidden></div>
 </div>
 
+{% comment %}
+  ═══ الصفقات المغلقة ═══
+
+  كل بيعٍ يُقابَل بما يسبقه من شراءٍ **بالوارد أوّلاً (FIFO)** —
+  وهي الطريقة التي تُبنى عليها كشوف Binance نفسها. وطريقةٌ أخرى
+  (آخرَ وارد، أو متوسّطاً) تعطي أرقاماً مختلفة للتاريخ نفسه، فذكرُ
+  المستعملة لازم.
+
+  والصافي **بعد العمولة**: بعملة الاقتباس تُطرح من العائد، وبالأصل
+  تُنقص الكمّية. وبـBNB لا تُحوَّل — ويُقال ذلك تحت الجدول.
+{% endcomment %}
+<section class="ds-card mt-4">
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">الصفقات المغلقة — ربحاً وخسارة</h3>
+    <span class="ds-card__meta" id="closed-head">يحسب…</span>
+  </div>
+  <div id="closed-body" class="p-2 small">
+    <span class="ds-text-muted">يحمّل…</span>
+  </div>
+  <div id="closed-notes" class="px-2 pb-2"></div>
+</section>
+
 <section class="ds-card mt-4">
   <div class="ds-card__head">
     <h3 class="ds-card__title">الأوامر المعلّقة على Binance</h3>

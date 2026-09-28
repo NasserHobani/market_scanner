@@ -33,7 +33,9 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))
 
-from scanner.portfolio.binance_positions import cost_basis  # noqa: E402
+from scanner.portfolio.binance_positions import (  # noqa: E402
+    cost_basis, roundtrips, split_symbol,
+)
 from tests_helpers import Checks, code_of, source_of  # noqa: E402
 
 c = Checks(__doc__.strip().splitlines()[0])
@@ -120,6 +122,93 @@ c("  وعمولة الأصل تُنقص الكمّية",
 bs = cost_basis([T(500, 1, False, t=1)])
 c("  وبيعٌ بلا شراء لا يُربِح", bs["realized"] == 0.0, str(bs["realized"]))
 c("  ولا متوسّط بلا كمّية", cost_basis([])["avg_cost"] is None)
+
+
+# ═══════════ ٤ب) الصفقات المغلقة — بالوارد أوّلاً وبعد العمولة ═══════════
+#
+# ═══ لماذا FIFO يُصرَّح به ═══
+#
+# «كم ربحت من هذه الصفقة» بلا جواب ما لم يُقرَّر أيّ شراءٍ يقابل
+# هذا البيع. واشتريتَ ثلاثاً وبعتَ مرّة: أيّها بعت؟ والطرق الثلاث
+# (وارد أوّلاً · آخر وارد · متوسّط) تعطي أرقاماً مختلفة للتاريخ
+# نفسه — فذكرُ المستعملة جزءٌ من الصدق لا زينة.
+c("  والطريقة مصرَّح بها",
+  roundtrips([])["method"] == "FIFO")
+c("  والرمز يُقسَّم", split_symbol("TRXUSDT") == ("TRX", "USDT"))
+c("  وبأطول اقتباس", split_symbol("ETHBTC") == ("ETH", "BTC"))
+
+rt = roundtrips([T(100, 2, t=1), T(150, 1, False, t=2)], "XUSDT")
+c("٤ب صفقةٌ مغلقة واحدة", rt["n"] == 1, str(rt["n"]))
+one = rt["closed"][0]
+c("  والصافي صحيح", one["net"] == 50.0, str(one["net"]))
+c("  والنسبة", one["pct"] == 50.0, str(one["pct"]))
+c("  ورابحة", one["won"] and rt["wins"] == 1)
+c("  والباقي مفتوح", rt["open_qty"] == 1.0, str(rt["open_qty"]))
+
+# ═══ والوارد أوّلاً لا الأرخص ═══
+#
+# شراءٌ بـ100 ثمّ بـ200، وبيعُ واحدةٍ بـ150: الوارد أوّلاً يقابل
+# الـ100 فيربح 50. ولو قابل الـ200 لخسر 50 — والفرق مئة على صفقة.
+fifo = roundtrips([T(100, 1, t=1), T(200, 1, t=2),
+                   T(150, 1, False, t=3)], "XUSDT")
+c("  والأقدم يُقابَل أوّلاً",
+  fifo["closed"][0]["net"] == 50.0, str(fifo["closed"][0]["net"]))
+c("  والدخول سعرُ الأقدم", fifo["closed"][0]["entry"] == 100.0)
+
+# ═══ والعمولة تُطرح من الصافي ═══
+#
+# إهمالُها يجعل كل صفقةٍ تبدو أربح بنحو ٠٫١٪ لكل طرف — ويتراكم.
+fee = roundtrips([T(100, 1, fee=0.1, fa="USDT", t=1),
+                  T(150, 1, False, fee=0.15, fa="USDT", t=2)], "XUSDT")
+c("  والعمولة تُطرَح",
+  abs(fee["closed"][0]["net"] - 49.75) < 1e-9,
+  str(fee["closed"][0]["net"]))
+c("  وتُعلَن", abs(fee["fees_quote"] - 0.15) < 1e-9, str(fee["fees_quote"]))
+
+# ═══ وعمولة BNB لا تُحوَّل ═══
+#
+# التحويل يحتاج سعرها **لحظة الصفقة**، وتقديرُه بسعر اليوم يُنتج
+# رقماً يبدو دقيقاً وهو مخترَع.
+bnb = roundtrips([T(100, 1, t=1),
+                  T(150, 1, False, fee=0.02, fa="BNB", t=2)], "XUSDT")
+c("  وعمولة BNB تُعزَل", bnb["other_fees"].get("BNB") == 0.02,
+  str(bnb["other_fees"]))
+c("  ولا تدخل الصافي", bnb["closed"][0]["net"] == 50.0)
+c("  ويُقال ذلك",
+  any("لم تُحوَّل" in n for n in bnb["notes"]), str(bnb["notes"])[:120])
+
+# ═══ وبيعٌ بلا شراءٍ مسجَّل ═══
+#
+# رصيدٌ من إيداع: عدُّ العائد كلّه ربحاً كذبٌ صريح.
+orph = roundtrips([T(150, 1, False, t=1)], "XUSDT")
+c("  والبيع اليتيم لا يُربِح", orph["n"] == 0 and orph["net"] == 0.0)
+c("  ويُعلَن", orph["orphan_sold"] == 1.0 and
+  any("بلا شراءٍ مسجَّل" in n for n in orph["notes"]))
+
+# والخاسرة تُحسب خاسرة
+lost = roundtrips([T(200, 1, t=1), T(150, 1, False, t=2)], "XUSDT")
+c("  والخاسرة تُعَدّ",
+  lost["losses"] == 1 and lost["closed"][0]["net"] == -50.0)
+c("  ونسبة النجاح", lost["win_rate"] == 0.0, str(lost["win_rate"]))
+c("  والأحدث أوّلاً",
+  roundtrips([T(100, 1, t=1), T(150, 1, False, t=2),
+              T(100, 1, t=3), T(90, 1, False, t=4)],
+             "XUSDT")["closed"][0]["closed_at"] == 4)
+
+
+# ═══════════ ٤ج) حال المركز المفتوح ═══════════
+#
+# «رابحة أم خاسرة» ثلاث حالات لا اثنتان: والثالثة «غير معروفة»
+# لا «متعادلة» — تكلفةٌ مجهولة أو سعرٌ لم يصل.
+bp_src = source_of(ROOT / "scanner" / "portfolio" / "binance_positions.py")
+c("٤ج الربح يُحسب في الخادم", '"pnl_pct"' in bp_src)
+c("  والسعر كذلك", "def spot_prices" in bp_src)
+c("  وسببه: البثّ قد لا يصل", "تحجب CDN تحجبه" in bp_src)
+c("  والمجهول None لا صفر",
+  'p["pnl"] = p["pnl_pct"] = p["winning"] = None' in bp_src)
+c("  والشاشة تعرض الحال", '"status"' in js and "رابحة" in js and "خاسرة" in js)
+c("  والمجهول ليس متعادلاً", "غير معروف" in js)
+c("  وتقول إن كان السعر من الخادم", "من الخادم" in js)
 
 
 # ═══════════ ٥) الفجوة تُقال ═══════════

@@ -42,12 +42,24 @@
   /* ═══ الربح غير المحقّق ═══
    *
    * ‏null حين لا متوسّط تكلفة — لا صفر. والصفر رقمٌ يُجمَع ويُلوَّن
-   * ويُقرأ «لا ربح ولا خسارة»، وهو هنا «لا أعرف». */
+   * ويُقرأ «لا ربح ولا خسارة»، وهو هنا «لا أعرف».
+   *
+   * والسعر من البثّ إن وصل، وإلّا من الخادم: الشبكة التي تحجب
+   * ويب‑سوكت كانت تترك الخانة «…» إلى الأبد. */
+  function priceOf(p) {
+    var live = PRICES[p.symbol];
+    if (live !== undefined) return { px: live, live: true };
+    var server = num(p.last_price);
+    if (server !== null) return { px: server, live: false };
+    return null;
+  }
+
   function pnl(p) {
-    var px = PRICES[p.symbol];
+    var got = priceOf(p);
     var avg = num(p.avg_cost);
-    if (px === undefined || avg === null || !p.qty) return null;
-    return { abs: (px - avg) * p.qty, pct: ((px - avg) / avg) * 100 };
+    if (!got || avg === null || !p.qty) return null;
+    return { abs: (got.px - avg) * p.qty,
+             pct: ((got.px - avg) / avg) * 100, live: got.live };
   }
 
   function money(v, d) {
@@ -57,12 +69,17 @@
 
   var COLUMNS = [
     { key: "asset", label: "الأصل", width: "12%" },
-    { key: "qty", label: "الكمّية", align: "end", width: "13%" },
-    { key: "avg", label: "متوسّط التكلفة", align: "end", width: "13%" },
-    { key: "price", label: "السعر الآن", align: "end", width: "12%" },
-    { key: "value", label: "القيمة", align: "end", width: "12%" },
-    { key: "pnl", label: "غير محقّق", align: "end", width: "14%" },
-    { key: "rules", label: "قواعد الخروج", width: "16%" },
+    // ═══ الحال أوّلاً ═══
+    //
+    // «رابحة أم خاسرة» هو السؤال، والرقم تفصيله. وعمودٌ صريح
+    // يجيب عنه بلا أن يحسب القارئ فرقَ رقمين في رأسه.
+    { key: "status", label: "الحال", width: "11%" },
+    { key: "pnl", label: "غير محقّق", align: "end", width: "15%" },
+    { key: "qty", label: "الكمّية", align: "end", width: "11%" },
+    { key: "avg", label: "متوسّط التكلفة", align: "end", width: "11%" },
+    { key: "price", label: "السعر الآن", align: "end", width: "10%" },
+    { key: "value", label: "القيمة", align: "end", width: "10%" },
+    { key: "rules", label: "قواعد الخروج", width: "12%" },
     { key: "act", label: "", width: "8%" },
   ];
 
@@ -83,14 +100,35 @@
   }
 
   function row(p) {
-    var px = PRICES[p.symbol];
+    var got = priceOf(p);
+    var px = got ? got.px : undefined;
     var pl = pnl(p);
     var val = px !== undefined ? px * p.qty : null;
     var warn = p.basis_partial
       ? ' <span class="down" title="' + DS.esc(p.basis_note) + '">⚠</span>'
       : "";
 
+    /* ═══ ثلاث حالات لا اثنتان ═══
+     *
+     * رابحة · خاسرة · **غير معروفة**. والثالثة ليست «متعادلة»:
+     * هي تكلفةٌ مجهولة (رصيدٌ من إيداع) أو سعرٌ لم يصل. وعرضُها
+     * صفراً أخضر كذبٌ صريح. */
+    var status;
+    if (pl === null) {
+      status = DS.StatusBadge({ label: "غير معروف", tone: "neutral" }) +
+        '<span class="ds-text-xs ds-text-muted d-block">' +
+        (p.avg_cost === null ? "تكلفة مجهولة" : "لا سعر") + "</span>";
+    } else {
+      status = DS.StatusBadge({
+        label: pl.abs >= 0 ? "رابحة" : "خاسرة",
+        tone: pl.abs >= 0 ? "success" : "risk",
+      }) + (pl.live ? "" :
+        '<span class="ds-text-xs ds-text-muted d-block" ' +
+        'title="البثّ لم يصل — السعر من الخادم">من الخادم</span>');
+    }
+
     return {
+      status: status,
       asset: '<span class="ds-cell-strong">' + DS.esc(p.asset) + "</span>" +
         '<span class="trade-symbol__meta"> ' + DS.esc(p.symbol) + "</span>",
       qty: '<span class="ds-num" dir="ltr">' + DS.ltr(p.qty) + "</span>" +
@@ -102,10 +140,13 @@
         '">' + (px === undefined ? "…" : money(px)) + "</span>",
       value: '<span class="ds-num" dir="ltr">' + money(val) + "</span>",
       pnl: pl === null
-        ? '<span class="ds-text-muted" title="متوسّط التكلفة غير معروف">—</span>'
+        ? '<span class="ds-text-muted" title="متوسّط التكلفة أو السعر غير معروف">—</span>'
         : '<span class="ds-num ds-value-' + (pl.abs >= 0 ? "success" : "risk") +
-          '" dir="ltr">' + money(pl.abs) + " (" +
-          (pl.pct >= 0 ? "+" : "") + pl.pct.toFixed(2) + "%)</span>",
+          '" dir="ltr" style="font-size:1.05em">' +
+          (pl.pct >= 0 ? "+" : "") + pl.pct.toFixed(2) + "%</span>" +
+          '<span class="ds-num ds-text-xs ds-text-muted d-block" dir="ltr">' +
+          (pl.abs >= 0 ? "+" : "") + money(pl.abs) + " " +
+          DS.esc(p.quote || "USDT") + "</span>",
       rules: ruleChips(p),
       act: '<button class="ds-btn ds-btn--sm w-rule" data-symbol="' +
         DS.esc(p.symbol) + '" data-asset="' + DS.esc(p.asset) +
@@ -119,30 +160,159 @@
   function renderSummary() {
     var content = summary.querySelector(".ds-widget__content");
     var invested = 0, value = 0, known = 0, partial = 0;
+    var unreal = 0, unrealKnown = 0, winners = 0, losers = 0;
+
     POSITIONS.forEach(function (p) {
-      var px = PRICES[p.symbol];
-      if (px !== undefined) value += px * p.qty;
+      var got = priceOf(p);
+      if (got) value += got.px * p.qty;
+      var pl = pnl(p);
+      if (pl !== null) {
+        unreal += pl.abs;
+        unrealKnown++;
+        if (pl.abs >= 0) winners++; else losers++;
+      }
       /* المجهول لا يدخل المجموع: تكلفةٌ ناقصة تُنتج «ربحاً» وهمياً */
       if (p.basis_partial) { partial++; return; }
       if (p.cost) { invested += p.cost; known++; }
     });
-    var realized = POSITIONS.reduce(function (s, p) {
-      return s + (p.realized || 0);
-    }, 0);
 
-    content.innerHTML = DS.StatGrid([
+    var cards = [
+      /* ═══ الربح غير المحقّق أوّلاً ═══
+         هو ما يُسأل عنه: «هل أنا رابح الآن؟» */
+      { label: "غير محقّق الآن",
+        value: (unreal >= 0 ? "+" : "") + money(unreal),
+        tone: unrealKnown === 0 ? "neutral" : unreal >= 0 ? "success" : "risk",
+        hint: unrealKnown
+          ? winners + " رابحة · " + losers + " خاسرة"
+          : "لا مركز بتكلفةٍ وسعرٍ معروفين" },
       { label: "قيمة المراكز", value: money(value),
         hint: POSITIONS.length + " مركزاً" },
       { label: "التكلفة المعروفة", value: money(invested),
         hint: known + " من " + POSITIONS.length + " مركزاً" },
-      { label: "محقّق سابقاً", value: money(realized),
-        tone: realized >= 0 ? "success" : "risk",
-        hint: "من عمليات بيعٍ تمّت" },
-      { label: "تكلفة ناقصة", value: String(partial),
+    ];
+
+    if (CLOSED) {
+      /* المحقّق **بعد العمولة** — وهو الرقم الذي يعني شيئاً */
+      cards.push({
+        label: "محقّق (بعد العمولة)",
+        value: (CLOSED.net >= 0 ? "+" : "") + money(CLOSED.net),
+        tone: CLOSED.net >= 0 ? "success" : "risk",
+        hint: CLOSED.n + " صفقة · " +
+          (CLOSED.win_rate === null ? "—" : CLOSED.win_rate + "٪ نجاح"),
+      });
+    } else {
+      cards.push({ label: "تكلفة ناقصة", value: String(partial),
         tone: partial ? "warn" : "neutral",
-        hint: partial ? "إيداعٌ لا شراء — لا يُحتسب ربحها" : "لا شيء" },
-    ]);
+        hint: partial ? "إيداعٌ لا شراء — لا يُحتسب ربحها" : "لا شيء" });
+    }
+
+    content.innerHTML = DS.StatGrid(cards);
     summary.setAttribute("data-state", "ready");
+  }
+
+  /* ─────────────────── الصفقات المغلقة */
+
+  var CLOSED = null;
+
+  var CLOSED_COLUMNS = [
+    { key: "symbol", label: "الرمز", width: "13%" },
+    { key: "result", label: "النتيجة", width: "12%" },
+    { key: "net", label: "الصافي", align: "end", width: "16%" },
+    { key: "qty", label: "الكمّية", align: "end", width: "12%" },
+    { key: "entry", label: "الدخول", align: "end", width: "12%" },
+    { key: "exit", label: "الخروج", align: "end", width: "12%" },
+    { key: "fee", label: "العمولة", align: "end", width: "10%" },
+    { key: "when", label: "الإغلاق", width: "13%" },
+  ];
+
+  function closedRow(r) {
+    var q = r.quote || "USDT";
+    return {
+      symbol: '<span class="ds-cell-strong">' + DS.esc(r.symbol) + "</span>",
+      result: DS.StatusBadge({ label: r.won ? "ربح" : "خسارة",
+                               tone: r.won ? "success" : "risk" }) +
+        (r.partial ? '<span class="ds-text-xs ds-text-muted d-block" ' +
+          'title="بيعت كمّية أكبر ممّا سُجّل شراؤه">جزئية</span>' : ""),
+      net: '<span class="ds-num ds-value-' + (r.won ? "success" : "risk") +
+        '" dir="ltr" style="font-size:1.05em">' +
+        (r.net >= 0 ? "+" : "") + money(r.net) + " " + DS.esc(q) + "</span>" +
+        '<span class="ds-num ds-text-xs ds-text-muted d-block" dir="ltr">' +
+        (r.pct >= 0 ? "+" : "") + Number(r.pct).toFixed(2) + "%</span>",
+      qty: '<span class="ds-num" dir="ltr">' + DS.ltr(r.qty) + "</span>",
+      entry: '<span class="ds-num" dir="ltr">' + money(r.entry) + "</span>",
+      exit: '<span class="ds-num" dir="ltr">' + money(r.exit) + "</span>",
+      fee: '<span class="ds-num ds-text-xs" dir="ltr">' +
+        money(r.fee_quote) + "</span>",
+      when: '<span class="ds-text-xs ds-text-muted">' +
+        (r.closed_at ? new Date(r.closed_at).toLocaleString("ar-SA") : "—") +
+        "</span>",
+      _attrs: 'data-key="' + DS.esc(r.symbol + "|" + r.closed_at) + '"',
+    };
+  }
+
+  function renderClosed(d) {
+    var host = document.getElementById("closed-body");
+    var head = document.getElementById("closed-head");
+    if (!host) return;
+    if (!d || !d.ok) {
+      host.innerHTML = '<p class="small ds-text-muted">' +
+        DS.esc((d && d.why) || "تعذّر") + "</p>";
+      return;
+    }
+    CLOSED = d;
+    renderSummary();
+
+    if (!d.n) {
+      host.innerHTML = '<p class="small ds-text-muted">' +
+        "لا صفقة مغلقة على الرموز المفحوصة (" + d.symbols + " رمزاً).</p>";
+      return;
+    }
+
+    var q = (d.closed[0] || {}).quote || "USDT";
+    head.innerHTML =
+      '<span class="ds-value-' + (d.net >= 0 ? "success" : "risk") + '">' +
+      (d.net >= 0 ? "+" : "") + money(d.net) + " " + DS.esc(q) + "</span>" +
+      '<span class="ds-text-muted"> صافياً · ' + d.wins + " ربح · " +
+      d.losses + " خسارة · " + d.win_rate + "٪ · عمولات " +
+      money(d.fees_quote) + "</span>";
+
+    host.innerHTML = "";
+    DS.patchDataTable(host, {
+      columns: CLOSED_COLUMNS, items: d.closed,
+      keyFn: function (r) { return r.symbol + "|" + r.closed_at; },
+      buildRow: closedRow,
+      patchRow: function (tr, r) {
+        var cells = closedRow(r);
+        CLOSED_COLUMNS.forEach(function (c) {
+          DS.setCellText(tr, c.key, cells[c.key]);
+        });
+      },
+    });
+
+    /* ═══ وما لا يُحسَب يُقال ═══
+       عمولةٌ بـBNB لا تُحوَّل: التحويل يحتاج سعرها لحظة الصفقة. */
+    var notes = document.getElementById("closed-notes");
+    if (notes) {
+      notes.innerHTML = (d.notes || []).map(function (n) {
+        return '<p class="ds-text-xs ds-text-muted mb-1">' + DS.esc(n) + "</p>";
+      }).join("") +
+        ((d.failed || []).length
+          ? '<p class="ds-text-xs down">تعذّر قراءة: ' +
+            DS.esc(d.failed.join(" · ")) + "</p>" : "");
+    }
+  }
+
+  function loadClosed(force) {
+    var host = document.getElementById("closed-body");
+    if (host) host.innerHTML = '<span class="ds-text-muted small">يحسب…</span>';
+    fetch("/api/wallet/closed/" + (force ? "?refresh=1" : ""),
+          { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(renderClosed)
+      .catch(function (e) {
+        if (host) host.innerHTML = '<span class="small down">' +
+          DS.esc(String(e).slice(0, 120)) + "</span>";
+      });
   }
 
   function renderTable() {
@@ -176,7 +346,7 @@
       var tr = document.querySelector('[data-key="' + CSS.escape(p.symbol) + '"]');
       if (!tr) return;
       var cells = row(p);
-      ["price", "value", "pnl"].forEach(function (k) {
+      ["status", "price", "value", "pnl"].forEach(function (k) {
         DS.setCellText(tr, k, cells[k]);
       });
     });
@@ -411,7 +581,7 @@
 
   document.getElementById("wallet-refresh").addEventListener("click", function () {
     say("يحدّث…");
-    load(true).then(function () { say(""); loadOrders(); });
+    load(true).then(function () { say(""); loadOrders(); loadClosed(true); });
   });
 
   document.getElementById("wallet-check").addEventListener("click", function () {
@@ -430,6 +600,8 @@
   loadHealth();
   load(false);
   loadOrders();
+  // الصفقات المغلقة نداءٌ لكل رمز — فتأتي بعد المراكز لا معها
+  loadClosed(false);
   // الأرصدة تتغيّر ببطء — والسعر يأتي من البثّ لحظةً بلحظة
   EVERY(120000, function () { load(false); });
 })();

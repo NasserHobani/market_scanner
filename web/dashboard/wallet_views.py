@@ -124,11 +124,90 @@ def api_wallet_trades(request):
         return JsonResponse({"ok": False, "reason": str(exc)[:240]},
                             status=400)
 
-    from scanner.portfolio.binance_positions import cost_basis
+    from scanner.portfolio.binance_positions import cost_basis, roundtrips
 
     return JsonResponse({"ok": True, "symbol": symbol,
                          "trades": trades[::-1],      # الأحدث أوّلاً
-                         "basis": cost_basis(trades)})
+                         "basis": cost_basis(trades),
+                         # كل بيعٍ صفقةٌ مغلقة بربحها الصافي
+                         "roundtrips": roundtrips(trades, symbol)})
+
+
+@require_GET
+def api_wallet_closed(request):
+    """الصفقات المغلقة عبر الحساب كلّه — ربحاً وخسارةً بعد العمولة.
+
+    ═══ ولماذا نداءٌ منفصل ═══
+
+    ``myTrades`` نداءٌ **لكل رمز**. وحسابٌ فيه عشرون أصلاً يعني
+    عشرين طلباً — ووضعُها في نداء المراكز يجعل فتح الصفحة ينتظرها
+    كلّها. فتُطلَب حين تُطلَب، وتُخبّأ.
+    """
+    from scanner.adapters import binance_account as ba
+    from scanner.portfolio.binance_positions import roundtrips
+
+    hit = _CACHE.get("closed")
+    force = request.GET.get("refresh") == "1"
+    if hit and not force and (time.time() - hit[0]) < _TTL:
+        return JsonResponse({"ok": True, "cached": True, **hit[1]})
+
+    snap = _snapshot()
+    if not snap.get("ok"):
+        return JsonResponse({"ok": False, "why": snap.get("why", "تعذّر")})
+
+    # ═══ الرموز التي لها تاريخ ═══
+    #
+    # المراكز القائمة **وحدها** لا تكفي: من باع كل ما يملك من رمزٍ
+    # لم يعد له رصيد، وصفقاته المغلقة هي بالضبط ما يُسأل عنه.
+    # فتُضاف رموز الأوامر المعلّقة وقواعد الخروج معها.
+    from .models import WalletRule
+
+    symbols = {p["symbol"].upper() for p in snap.get("positions", [])}
+    try:
+        symbols |= {o["symbol"].upper() for o in ba.open_orders()}
+    except ba.BinanceAuthError:
+        pass
+    symbols |= {r.symbol.upper() for r in WalletRule.objects.all()}
+    extra = (request.GET.get("symbols") or "").upper()
+    symbols |= {s.strip() for s in extra.split(",") if s.strip().isalnum()}
+
+    groups, failed = [], []
+    for sym in sorted(symbols)[:40]:
+        try:
+            rt = roundtrips(ba.my_trades(sym), sym)
+        except ba.BinanceAuthError as exc:
+            failed.append(f"{sym}: {str(exc)[:60]}")
+            continue
+        if rt["n"]:
+            groups.append(rt)
+
+    closed = [r for g in groups for r in g["closed"]]
+    closed.sort(key=lambda r: r.get("closed_at") or 0, reverse=True)
+    wins = [r for r in closed if r["won"]]
+
+    other: dict[str, float] = {}
+    for g in groups:
+        for k, v in (g.get("other_fees") or {}).items():
+            other[k] = round(other.get(k, 0.0) + v, 8)
+
+    data = {
+        "closed": closed,
+        "n": len(closed),
+        "wins": len(wins),
+        "losses": len(closed) - len(wins),
+        "win_rate": round(len(wins) / len(closed) * 100.0, 1) if closed else None,
+        "net": round(sum(r["net"] for r in closed), 8),
+        "gross_win": round(sum(r["net"] for r in wins), 8),
+        "gross_loss": round(sum(r["net"] for r in closed if not r["won"]), 8),
+        "fees_quote": round(sum(r["fee_quote"] for r in closed), 8),
+        "other_fees": other,
+        "symbols": len(groups),
+        "failed": failed,
+        "method": "FIFO",
+        "notes": sorted({n for g in groups for n in g.get("notes", [])}),
+    }
+    _CACHE["closed"] = (time.time(), data)
+    return JsonResponse({"ok": True, "cached": False, **data})
 
 
 @require_GET
