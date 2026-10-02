@@ -1,7 +1,8 @@
 from django.urls import path
 
 from . import ai_live_views
-from . import concurrency, postmortem_views, btc_views, views, wallet_views
+from . import (concurrency, postmortem_views, btc_views, study_views, views,
+               wallet_views)
 from . import widget_views
 from . import ai_explainability_views as ai_views
 from . import ai_local_views
@@ -146,6 +147,12 @@ urlpatterns = [
     # تشريح الصفقات المحسومة: القياس فوري، والتفسير مهمّة خلفية
     path("api/concurrency/", concurrency.api_concurrency,
          name="api_concurrency"),
+    # دراسة رمزٍ واحد على تاريخه — مستوياتٌ وشروط
+    path("study/", study_views.study_page, name="study"),
+    path("api/study/start/", study_views.api_study_start,
+         name="api_study_start"),
+    path("api/study/status/", study_views.api_study_status,
+         name="api_study_status"),
     # الحجّة بوجهيها **قبل** الدخول — لماذا قد تنجح ولماذا قد تفشل
     path("api/case/", postmortem_views.api_case, name="api_case"),
     path("api/postmortem/", postmortem_views.api_postmortem,

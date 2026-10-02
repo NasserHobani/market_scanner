@@ -1,0 +1,93 @@
+{% extends "dashboard/base.html" %}
+{% load static assets l10n fmt %}
+
+{% block content %}
+<div class="ds-page-header">
+  <div class="ds-page-header__text">
+    <h1 class="ds-page-header__title">دراسة رمز</h1>
+    <p class="ds-page-header__sub">
+      أين ارتدّ هذا الرمز تاريخياً، وأيّ الشروط سبقت حركةً صاعدة —
+      بالقياس على تاريخه هو، لا بقاعدةٍ عامّة.
+    </p>
+  </div>
+</div>
+
+<section class="ds-card mb-3">
+  <div class="p-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-3">
+        <label class="form-label small" for="s-symbol">الرمز</label>
+        <input class="form-control form-control-sm" id="s-symbol"
+               dir="ltr" placeholder="BTCUSDT" autocomplete="off">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small" for="s-market">السوق</label>
+        <select class="form-select form-select-sm" id="s-market">
+          {% for m in markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small" for="s-tf">الفريم</label>
+        <select class="form-select form-select-sm" id="s-tf">
+          {% for t in timeframes %}
+            <option value="{{ t.key }}"{% if t.key == "4h" %} selected{% endif %}
+              >{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% comment %}
+        ═══ الحاجزان ظاهران لا مخفيّان ═══
+
+        «نسبة النجاح ٦٤٪» بلا ذكر الهدف والوقف رقمٌ بلا معنى: هدفٌ
+        قريب يرفعها وبعيدٌ يخفضها، والاثنان صحيحان. فمن يقرأ الرقم
+        يجب أن يرى الشرط الذي أنتجه، وأن يغيّره ويرى الأثر.
+      {% endcomment %}
+      <div class="col-4 col-md-1">
+        <label class="form-label small" for="s-target">هدف ×ATR</label>
+        <input class="form-control form-control-sm" type="number" step="0.5"
+               min="0.5" max="10" value="2" id="s-target" dir="ltr">
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small" for="s-stop">وقف ×ATR</label>
+        <input class="form-control form-control-sm" type="number" step="0.25"
+               min="0.25" max="10" value="1" id="s-stop" dir="ltr">
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small" for="s-horizon">أفق</label>
+        <input class="form-control form-control-sm" type="number" step="4"
+               min="4" max="200" value="24" id="s-horizon" dir="ltr">
+      </div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button class="ds-btn ds-btn--primary w-100" id="s-run">ادرس</button>
+      </div>
+    </div>
+    <div class="mt-2 ds-text-xs" id="s-state"></div>
+  </div>
+</section>
+
+<div id="s-summary" class="mb-3"></div>
+
+<section class="ds-card mb-3" id="s-zones-card" hidden>
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">مناطق الارتداد</h3>
+    <span class="ds-card__meta">مرتّبةً بأسوأ ما تحتمله البيانات</span>
+  </div>
+  <div id="s-zones" class="p-2 small"></div>
+</section>
+
+<section class="ds-card mb-3" id="s-conds-card" hidden>
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">شروط الدخول</h3>
+    <span class="ds-card__meta" id="s-conds-meta"></span>
+  </div>
+  <div id="s-conds" class="p-2 small"></div>
+</section>
+
+<div id="s-notes" class="mb-4"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'dashboard/format.js' %}"></script>
+<script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/study-page.js' %}"></script>
+{% endblock %}

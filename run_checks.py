@@ -73,6 +73,7 @@ STEPS = [
     ("توصيل متغيّرات البيئة", [PY, "tests_env_wiring.py"]),
     ("ربط المحفظة", [PY, "tests_wallet.py"]),
     ("لماذا تنجح ولماذا تفشل", [PY, "tests_trade_case.py"]),
+    ("دراسة الرمز", [PY, "tests_study.py"]),
     ("فلتر راكب التشبّع", [PY, "tests_stoch_filter.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══
