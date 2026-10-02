@@ -34,7 +34,18 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
-DEFAULT_PATHS = ["/healthz/", "/accounts/login/", "/"]
+# ═══ كل صفحةٍ مسّها التعديل الأخير ═══
+#
+# الفحص على ثلاث صفحاتٍ كان يترك الباقي مجهولاً — وصفحةٌ لا تُطلَب
+# لا يُكتشَف عطبها حتى تُفتح. والطلب هنا بلا جلسة، فالمحميّة تردّ
+# ‏302 إلى الدخول — وهو **نجاح**: يعني أنّ الوسيط يعمل والصفحة
+# سليمة إلى حدّ التحويل.
+DEFAULT_PATHS = [
+    "/healthz/", "/accounts/login/", "/",
+    "/wallet/", "/watches/", "/trades/", "/scanner/", "/btc/",
+    "/strategies/", "/board/", "/symbols/", "/topdown/", "/jobs/",
+    "/settings/", "/paper/",
+]
 
 
 def main() -> int:

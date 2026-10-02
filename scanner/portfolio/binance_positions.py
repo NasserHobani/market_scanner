@@ -52,6 +52,33 @@ STABLE_ASSETS = frozenset({
 #: فرقٌ أقلّ من هذا بين كمّية الصفقات والرصيد يُعدّ تقريب كسور
 QTY_TOLERANCE = 0.005          # ٠٫٥٪
 
+# ═══ سجلّ الصفقات يُجلَب مرّةً ═══
+#
+# ``myTrades`` نداءٌ موقَّع **لكل رمز**. وكانت ``build`` تجلبه
+# لحساب متوسّط التكلفة، ثمّ تجلبه ``/api/wallet/closed/`` مرّةً
+# أخرى لنفس الرموز — ضِعفُ الطلبات لنفس البيانات، وضِعفُ الزمن
+# الذي تنتظره الصفحة.
+#
+# والمفتاح هنا بالرمز وحده: السجلّ لا يتغيّر إلّا بصفقةٍ جديدة،
+# ومهلةُ دقائق تكفي.
+_TRADES: dict[str, tuple[float, list]] = {}
+TRADES_TTL = 180.0
+
+
+def trades_for(symbol: str) -> list[dict]:
+    """صفقات رمزٍ — من الذاكرة إن كانت طازجة."""
+    import time
+
+    from scanner.adapters import binance_account as ba
+
+    key = symbol.upper()
+    hit = _TRADES.get(key)
+    if hit and (time.time() - hit[0]) < TRADES_TTL:
+        return hit[1]
+    rows = ba.my_trades(key)
+    _TRADES[key] = (time.time(), rows)
+    return rows
+
 
 def cost_basis(trades: list[dict]) -> dict:
     """متوسّط التكلفة والمحقّق من سجلّ صفقات رمزٍ واحد.
@@ -368,7 +395,7 @@ def build(*, dust_usd: float = 5.0, max_symbols: int = 40,
         asset = b["asset"].upper()
         sym = symbol_for(asset, known_symbols) or f"{asset}USDT"
         try:
-            trades = ba.my_trades(sym)
+            trades = trades_for(sym)
         except ba.BinanceAuthError as exc:
             skipped.append(f"{asset}: {str(exc)[:60]}")
             continue

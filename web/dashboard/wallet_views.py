@@ -171,10 +171,15 @@ def api_wallet_closed(request):
     extra = (request.GET.get("symbols") or "").upper()
     symbols |= {s.strip() for s in extra.split(",") if s.strip().isalnum()}
 
+    from scanner.portfolio.binance_positions import trades_for
+
     groups, failed = [], []
     for sym in sorted(symbols)[:40]:
         try:
-            rt = roundtrips(ba.my_trades(sym), sym)
+            # ``trades_for`` لا ``my_trades``: ``build`` جلبها قبل
+            # قليل لحساب متوسّط التكلفة، وإعادةُ جلبها ضِعفُ
+            # الطلبات لنفس البيانات وضِعفُ انتظار الصفحة.
+            rt = roundtrips(trades_for(sym), sym)
         except ba.BinanceAuthError as exc:
             failed.append(f"{sym}: {str(exc)[:60]}")
             continue

@@ -723,7 +723,8 @@ def lane_of(handler: str) -> str:
     return "heavy" if handler in HEAVY_HANDLERS else "light"
 
 
-def claim_due(*, limit: int = 40, lane: str | None = None) -> list:
+def claim_due(*, limit: int = 40, lane: str | None = None,
+              exclude_codes: set[str] | None = None) -> list:
     """يحجز المستحقّ ويُقدّم موعده **قبل** التشغيل — كما يفعل أودو.
 
     ═══ لماذا التقديم قبل العمل ═══
@@ -778,6 +779,12 @@ def claim_due(*, limit: int = 40, lane: str | None = None) -> list:
                 heavy = sorted(HEAVY_HANDLERS)
                 qs = (qs.exclude(handler__in=heavy) if lane == "light"
                       else qs.filter(handler__in=heavy))
+            # ═══ ما عمل في هذه الدورة لا يُعاد ═══
+            #
+            # بلا هذا تجوع المهامّ الطويلة الأولوية. انظر الشرح
+            # الكامل في ``run_due``.
+            if exclude_codes:
+                qs = qs.exclude(code__in=sorted(exclude_codes))
             if skip_locked:
                 qs = qs.select_for_update(skip_locked=True)
             for job in list(qs)[:limit]:
@@ -814,9 +821,27 @@ def run_due(*, block: bool = False, lane: str | None = None,
 
     فالحجز واحدةً واحدة، والميزانية تُفحَص **قبل** كل حجز. وما لم
     يُحجَز يبقى مستحقّاً للدورة التالية.
+
+    ═══ والمجاعة التي أحدثها ذلك ═══
+
+    الحجزُ واحدةً واحدة يُعيد الاستعلام في كل مرّة، و``claim_due``
+    يرتّب بالأولوية. و``market_sync`` أولويّتها ١٠ وفترتها عشر
+    دقائق، وتستغرق أطول منها: فما إن تنتهي حتى تكون **مستحقّةً من
+    جديد**، فتفوز بالحجز التالي. و``scan`` أولويّتها ٢٠ فلا يأتيها
+    دورٌ أبداً.
+
+    ولم يظهر ذلك خطأً في أيّ مكان: المسح توقّف، فتوقّف إنشاء
+    المراقبات، و``watch_monitor`` يُنهي المنتهية كل دقيقة — فجفّت
+    شاشة المراقبة في أيّام، وكلّ مهمّةٍ في الشاشة تقول «نجحت».
+
+    وقبل فصل المسارين كان ``claim_due`` يحجز الدفعة كلّها مرّةً
+    واحدة، فيأخذ المسح دوره بعد المزامنة. فالعلاج إبقاء ذلك
+    المعنى: **لكل مهمّةٍ دورٌ واحد في الدورة**، ثمّ تُستثنى حتى
+    تبدأ دورةٌ جديدة.
     """
     out = []
     started = time.monotonic()
+    served: set[str] = set()
     while True:
         # ═══ الميزانية قبل الحجز ═══
         if budget > 0 and (time.monotonic() - started) >= budget:
@@ -825,10 +850,11 @@ def run_due(*, block: bool = False, lane: str | None = None,
             break
         # الحجز لا القراءة: ``claim_due`` يقدّم الموعد ويقفل الصفّ،
         # فلا تراها عمليةٌ أخرى مستحقّةً وهي تعمل عندنا.
-        batch = claim_due(limit=1, lane=lane)
+        batch = claim_due(limit=1, lane=lane, exclude_codes=served)
         if not batch:
             break
         job = batch[0]
+        served.add(job.code)
         if block:
             # حزامُ أمانٍ ثانٍ: ``run_job`` يَعِد بألّا يرمي، وهذا
             # يضمن الوعد ولو نُقض. فمهمّةٌ واحدة يجب ألّا تمنع
