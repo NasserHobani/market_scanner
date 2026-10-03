@@ -175,18 +175,59 @@ js = (ROOT / "web" / "dashboard" / "static" / "dashboard"
 c("  والمتبقّي معروض", "day_left" in js or "daily_usd" in js)
 c("  والتقدير قبل النتيجة", "estimate_usd" in js)
 c("  والفعليّ بعدها", "u.cost" in js)
+
+# ═══ والموضع: صفحة الرمز ═══
+#
+# هناك يُقرأ التحليل، وهناك يُسأل عنه.
+sym = (ROOT / "web" / "dashboard" / "templates" / "dashboard"
+       / "symbol.html").read_text(encoding="utf-8")
+c("  والزرّ في صفحة الرمز", 'id="sym-ai"' in sym)
+c("  والسكربت محمَّل", "together-ask.js" in sym)
+c("  ورابطٌ إلى السقوف", "/settings/#ai_cost" in sym)
 # ═══ والحمولة تُبنى عند الضغط ═══
 #
-# بناؤها عند التركيب يرسل ما كان عند فتح الصفحة لا ما يراه الآن.
-sj = (ROOT / "web" / "dashboard" / "static" / "dashboard"
-      / "study-page.js").read_text(encoding="utf-8")
-c("  والحمولة دالّة", "payload: askPayload" in sj)
-c("  والملخَّص لا الجدول كلّه", "slice(0, 5)" in sj)
+# بناؤها عند التحميل يرسل ما كان عند فتح الصفحة لا ما يراه الآن
+# بعد تبديل الفريم.
+c("  والحمولة دالّة", "payload: function ()" in sym)
+c("  ولا يوصي بشراء", "ولا توصِ بشراء" in sym)
 
 u = code_of(ROOT / "web" / "dashboard" / "urls.py")
 for p in ("api/ai/together/", "api/ai/together/ask/",
           "api/ai/together/status/"):
     c(f"  والمسار {p}", f'"{p}"' in u)
+
+
+# ═══════════ ٦ب) السقوف في شاشة الإعدادات ═══════════
+#
+# متغيّر بيئةٍ يحتاج إعادة نشرٍ لتعديله. والسقف الماليّ يُضبط
+# بالتجربة — فمكانه الشاشة.
+sch = code_of(ROOT / "scanner" / "settings_schema.py")
+for key in ("ai_together_enabled", "ai_model", "ai_daily_usd",
+            "ai_monthly_usd", "ai_per_call_usd", "ai_price_in",
+            "ai_price_out", "ai_max_tokens"):
+    c(f"٦ب {key} في المخطّط", f'"{key}"' in sch)
+
+# ═══ والأسبقية: الشاشة ثمّ البيئة ═══
+c("  والشاشة تسبق البيئة", "def _setting" in scode and "_env(" in scode)
+c("  والترتيب موثَّق", "شاشة الإعدادات ← متغيّر البيئة ← الافتراض" in ssrc)
+c("  ولا ترمي القراءة", "except Exception" in scode)
+# ═══ ومفتاح إيقافٍ واحد ═══
+c("  ومفتاح إيقاف", "def enabled" in scode)
+# والفحص داخل ``complete`` — قبل المفتاح وقبل السقف، فما بعده يكلّف
+c("  ويُفحَص أوّلاً",
+  ("spend.enabled()" in _body and "check_budget" in _body
+   and _body.index("spend.enabled()") < _body.index("check_budget")),
+  _body[:140])
+
+# ═══ والمفتاح لا يُحفَظ في الشاشة ═══
+#
+# ما يُحفظ هناك يدخل قاعدة البيانات، وهي تُنسَخ في ``scanner.dump``
+# عند كل ترحيل — فمفتاحٌ هنا يسافر في كل نسخةٍ احتياطية.
+c("  والمفتاح ليس حقلاً", "TOGETHER_API_KEY" not in sch
+  and "together_api_key" not in sch.lower())
+c("  والسبب مكتوب",
+  "تُنسَخ في ‎scanner.dump‎" in source_of(
+      ROOT / "scanner" / "settings_schema.py"))
 
 
 # ═══════════ ٧) المفتاح يصل الحاوية ═══════════

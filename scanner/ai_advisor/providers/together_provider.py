@@ -72,6 +72,21 @@ def configured() -> bool:
 
 
 def model_id() -> str:
+    """النموذج — من شاشة الإعدادات ثمّ البيئة ثمّ الافتراض."""
+    try:
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        if str(root / "web") not in sys.path:
+            sys.path.insert(0, str(root / "web"))
+        from dashboard import appsettings
+
+        v = str((appsettings.values() or {}).get("ai_model") or "").strip()
+        if v:
+            return v
+    except Exception:  # noqa: BLE001
+        pass
     return os.environ.get("TOGETHER_MODEL", "").strip() or DEFAULT_MODEL
 
 
@@ -124,14 +139,27 @@ class TogetherProvider(LLMProvider):
         هذه هي الواجهة المباشرة. و``analyze`` تبني عليها لتوافق
         بقيّة المزوّدين.
         """
+        # ═══ مفتاح الإيقاف قبل كل شيء ═══
+        #
+        # إطفاؤه من شاشة الإعدادات يمنع النداء فوراً بلا إعادة نشر
+        # ولا حذف مفتاح. وهو أوّل ما يُفحَص: ما بعده يكلّف.
+        if not spend.enabled():
+            raise TogetherError(
+                "النداء المدفوع مُطفأ من الإعدادات ← «الذكاء المدفوع».")
+
         key = api_key()
         if not key:
             raise TogetherError(
                 "مفتاح Together غير مضبوط. أنشئه من api.together.ai ← "
                 "Settings ← API Keys، وأضفه في بورتينر ← Environment "
-                "variables: TOGETHER_API_KEY.")
+                "variables: TOGETHER_API_KEY. "
+                "(والمفتاح لا يُحفظ في شاشة الإعدادات: ما يُحفظ هناك "
+                "يدخل قاعدة البيانات، وهي تُنسَخ في كل ترحيل.)")
 
         model = model_id()
+        # السقف المضبوط من الشاشة يغلب ما يطلبه المُنادي
+        max_tokens = min(int(max_tokens),
+                         int(spend.limits().get("max_tokens") or max_tokens))
         # ═══ السقف قبل الإرسال ═══
         est_in = _rough_tokens(system) + _rough_tokens(user)
         spend.check_budget(model, est_in, max_tokens)

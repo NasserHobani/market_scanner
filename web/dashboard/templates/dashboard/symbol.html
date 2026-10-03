@@ -153,11 +153,32 @@
   </div>
 </div>
 
+{% comment %}
+  ═══ قراءةٌ لغوية — بزرٍّ وبثمنٍ معروض ═══
+
+  كلّ ما فوق محسوبٌ ولا يحتاج نموذجاً. وهذا يشرحه بالعربية لمن
+  أراد، ويُنادى **عند الطلب وحده** لأنّ كلّ نداءٍ يُنفَق.
+
+  والمتبقّي من السقف معروضٌ على الزرّ قبل الضغط، والسقوف تُضبط من
+  الإعدادات ← «الذكاء المدفوع».
+{% endcomment %}
+<section class="ds-card mt-4">
+  <div class="ds-card__head">
+    <h3 class="ds-card__title">اشرح هذا الرمز</h3>
+    <span class="ds-card__meta">
+      نداءٌ مدفوع — عند الطلب فقط ·
+      <a href="/settings/#ai_cost">السقوف</a>
+    </span>
+  </div>
+  <div id="sym-ai" class="p-2"></div>
+</section>
+
 {{ payload|json_script:"page-data" }}
 {% endblock %}
 
 {% block scripts %}
 <script src="{% asset 'dashboard/ds-components.js' %}"></script>
+<script src="{% asset 'dashboard/together-ask.js' %}"></script>
 <script src="{% asset 'dashboard/ai-advisor-explain.js' %}"></script>
 <script src="{% asset 'dashboard/format.js' %}"></script>
 <script src="{% asset 'dashboard/livefeed.js' %}"></script>
@@ -181,6 +202,36 @@ if (typeof LightweightCharts === "undefined") {
   var DATA = JSON.parse(el.textContent);
   var feedEl = document.getElementById("feed-status");
   var closed = DATA.close;
+
+  /* ═══ النداء المدفوع ═══
+   *
+   * الحمولة تُبنى **عند الضغط** لا عند تحميل الصفحة: فتحمل
+   * القراءة الحالية بعد تبديل الفريم لا ما كان عند الفتح.
+   *
+   * والمُرسَل الخلاصة لا كل شيء — الوحدات تُحسَب بالطول، وإرسال
+   * الجداول كلّها يضاعف الفاتورة بلا أن يضيف للنموذج ما يشرحه.
+   */
+  if (window.TogetherAsk) {
+    TogetherAsk.mount(document.getElementById("sym-ai"), {
+      purpose: "symbol",
+      payload: function () {
+        var txt = function (id) {
+          var n = document.getElementById(id);
+          return n ? n.textContent.trim() : "";
+        };
+        return JSON.stringify({
+          الرمز: DATA.symbol, السوق: DATA.market,
+          الفريم: txt("h-tf") || DATA.timeframe,
+          الإغلاق: txt("h-close") || DATA.close,
+          الدرجة: txt("h-score"),
+          الحكم: txt("h-ready") + " · " + txt("h-decision"),
+          المطلوب: ["اشرح ماذا تعني هذه القراءة",
+                    "وما الذي يدعم الدخول وما الذي يضعفه",
+                    "ولا تقترح سعراً ولا توصِ بشراء"],
+        }, null, 1);
+      },
+    });
+  }
 
   // ── العدّاد ──
   var cdEl = document.getElementById("countdown");

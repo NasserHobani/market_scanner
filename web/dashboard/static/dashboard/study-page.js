@@ -141,52 +141,6 @@
       '<p class="ds-text-xs ds-text-muted mt-2">' + esc(c.note) + "</p>";
   }
 
-  /* ═══ ما يُرسَل للنموذج ═══
-   *
-   * الملخَّص لا الدراسة كاملة: الوحدات تُحسَب بالطول، فإرسالُ كل
-   * منطقةٍ وكل شرطٍ يضاعف الفاتورة بلا أن يضيف شيئاً — النموذج
-   * يشرح الخلاصة لا يُعيد حساب الجدول.
-   *
-   * والحمولة تُبنى **عند الضغط** لا عند التركيب، فتحمل ما يراه
-   * المستخدم بعد تغيير الحاجزين لا ما كان عند فتح الصفحة. */
-  var LAST = null;
-
-  function askPayload() {
-    var d = LAST;
-    if (!d) return "";
-    var c = d.conditions || {};
-    var strong = (c.conditions || []).filter(function (r) {
-      return r.verdict === "صمد داخل العيّنة وخارجها";
-    }).slice(0, 5);
-    return JSON.stringify({
-      الرمز: d.symbol, الفريم: d.timeframe,
-      الشموع: d.candles, المدى: d.from + " ← " + d.to,
-      السعر: d.last_close,
-      معيار_النجاح: d.params,
-      خط_الأساس: d.baseline,
-      أقوى_المناطق: (d.zones || []).slice(0, 5).map(function (z) {
-        return { من: z.low, إلى: z.high, لمسات: z.settled,
-                 صمدت: z.held, النسبة: z.rate,
-                 الفاصل: [z.lo, z.hi], البعد: z.distance_pct };
-      }),
-      شروط_صمدت: strong.map(function (r) {
-        return { الشرط: r.label, داخل: r.in_sample, خارج: r.out_sample };
-      }),
-      المطلوب: ["اشرح ماذا تعني هذه الأرقام للرمز",
-                "وأين مواضع الدخول التي تسندها البيانات",
-                "وما الذي لا تسنده"],
-    }, null, 1);
-  }
-
-  function mountAsk(d) {
-    LAST = d;
-    var card = document.getElementById("s-ai-card");
-    if (!card || !window.TogetherAsk) return;
-    card.hidden = false;
-    TogetherAsk.mount(document.getElementById("s-ai"),
-                      { purpose: "study", payload: askPayload, max: 1200 });
-  }
-
   function render(d) {
     if (!d.ok) {
       say(d.why || "تعذّرت الدراسة", "ds-value-risk");
@@ -198,7 +152,6 @@
     renderSummary(d);
     renderZones(d);
     renderConds(d);
-    mountAsk(d);
     document.getElementById("s-notes").innerHTML =
       (d.notes || []).map(function (n) {
         return '<p class="ds-text-xs ds-text-muted mb-1">' + esc(n) + "</p>";

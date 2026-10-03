@@ -67,31 +67,86 @@ class BudgetExceeded(RuntimeError):
     """تجاوزُ السقف — ويحمل الرسالة التي تُعرَض للمستخدم."""
 
 
-def _f(name: str, default: float) -> float:
+def _env(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, "").strip() or default)
     except (TypeError, ValueError):
         return default
 
 
+def _setting(key: str, default: float) -> float:
+    """قيمةٌ من شاشة الإعدادات — وفراغٌ إن تعذّر.
+
+    ═══ ترتيب الأسبقية ═══
+
+        شاشة الإعدادات ← متغيّر البيئة ← الافتراض
+
+    والشاشة أوّلاً لأنّها ما يراه صاحبها ويعدّله بلا إعادة نشر.
+    والبيئة تبقى سبيلاً لمن يضبط المكدّس كلّه من بورتينر.
+
+    والقراءة لا ترمي: جدولٌ غير مُهاجَر أو قاعدةٌ نائمة يجب ألّا
+    يمنعا السقف من العمل — والعودة إلى الافتراض المنخفض هي
+    الاتّجاه الآمن.
+    """
+    try:
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        if str(root / "web") not in sys.path:
+            sys.path.insert(0, str(root / "web"))
+        from dashboard import appsettings
+
+        v = (appsettings.values() or {}).get(key)
+        if v is not None and str(v).strip() != "":
+            return float(v)
+    except Exception:  # noqa: BLE001
+        pass
+    return default
+
+
+def _f(setting_key: str, env_name: str, default: float) -> float:
+    return _setting(setting_key, _env(env_name, default))
+
+
+def enabled() -> bool:
+    """مفتاح الإيقاف الواحد — من الشاشة بلا إعادة نشر."""
+    try:
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        if str(root / "web") not in sys.path:
+            sys.path.insert(0, str(root / "web"))
+        from dashboard import appsettings
+
+        v = (appsettings.values() or {}).get("ai_together_enabled")
+        if v is not None:
+            return bool(v)
+    except Exception:  # noqa: BLE001
+        pass
+    return os.environ.get("AI_TOGETHER_ENABLED", "1").strip() != "0"
+
+
 def limits() -> dict:
-    """السقوف — من البيئة، وبقيمٍ محافظة إن لم تُضبط.
+    """السقوف — من الشاشة ثمّ البيئة، وبقيمٍ محافظة إن لم تُضبط.
 
     والافتراض **منخفض** عمداً: سقفٌ كبير منسيّ لا يحرس شيئاً،
     وسقفٌ صغير يُرفع بوعيٍ حين يُحتاج.
     """
     return {
-        "daily_usd": _f("AI_DAILY_USD", 1.0),
-        "monthly_usd": _f("AI_MONTHLY_USD", 10.0),
+        "daily_usd": _f("ai_daily_usd", "AI_DAILY_USD", 1.0),
+        "monthly_usd": _f("ai_monthly_usd", "AI_MONTHLY_USD", 10.0),
         # نداءٌ واحد لا يتجاوز هذا مهما كان الطلب
-        "per_call_usd": _f("AI_PER_CALL_USD", 0.25),
+        "per_call_usd": _f("ai_per_call_usd", "AI_PER_CALL_USD", 0.25),
+        "max_tokens": int(_f("ai_max_tokens", "AI_MAX_TOKENS", 1200)),
     }
 
 
 def prices(model: str) -> dict:
     p = DEFAULT_PRICES.get(model, {"in": 0.15, "out": 0.60})
-    return {"in": _f("AI_PRICE_IN", p["in"]),
-            "out": _f("AI_PRICE_OUT", p["out"])}
+    return {"in": _f("ai_price_in", "AI_PRICE_IN", p["in"]),
+            "out": _f("ai_price_out", "AI_PRICE_OUT", p["out"])}
 
 
 def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
