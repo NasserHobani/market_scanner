@@ -74,6 +74,7 @@ STEPS = [
     ("ربط المحفظة", [PY, "tests_wallet.py"]),
     ("لماذا تنجح ولماذا تفشل", [PY, "tests_trade_case.py"]),
     ("دراسة الرمز", [PY, "tests_study.py"]),
+    ("‏Together — عند الطلب وبسقف", [PY, "tests_together.py"]),
     ("فلتر راكب التشبّع", [PY, "tests_stoch_filter.py"]),
     ("شراءٌ فقط — لا بيع", [PY, "tests_long_only.py"]),
     # ═══ يسبق ما يستورده ═══

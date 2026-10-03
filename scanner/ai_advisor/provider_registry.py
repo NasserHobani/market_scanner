@@ -67,6 +67,17 @@ class ProviderRegistry:
                     DeepSeekProvider, OpenRouterProvider, OpenSourceProvider):
             p = cls()
             self.register(p)
+        # ═══ Together يُسجَّل ولا يصير افتراضياً ═══
+        #
+        # التسجيل يجعله متاحاً بمعرّفه ``together`` لمن يطلبه
+        # صراحةً. ولا يُختار تلقائياً في أيّ مسار ارتداد: مزوّدٌ
+        # مدفوع يُنادى بخطأٍ في الاختيار أسوأ من مزوّدٍ غائب.
+        try:
+            from .providers.together_provider import create_together_provider
+
+            self.register(create_together_provider())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 _default_registry: ProviderRegistry | None = None

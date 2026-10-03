@@ -70,6 +70,14 @@ services:
       REQUIRE_LOGIN: ${REQUIRE_LOGIN:-1}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # ‏Together — عند الطلب وحده، والسقوف تحرس التكلفة
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_MODEL: ${TOGETHER_MODEL:-}
+      AI_DAILY_USD: ${AI_DAILY_USD:-1}
+      AI_MONTHLY_USD: ${AI_MONTHLY_USD:-10}
+      AI_PER_CALL_USD: ${AI_PER_CALL_USD:-0.25}
+      AI_PRICE_IN: ${AI_PRICE_IN:-}
+      AI_PRICE_OUT: ${AI_PRICE_OUT:-}
       SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"
@@ -126,6 +134,14 @@ services:
       REQUIRE_LOGIN: ${REQUIRE_LOGIN:-1}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # ‏Together — عند الطلب وحده، والسقوف تحرس التكلفة
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_MODEL: ${TOGETHER_MODEL:-}
+      AI_DAILY_USD: ${AI_DAILY_USD:-1}
+      AI_MONTHLY_USD: ${AI_MONTHLY_USD:-10}
+      AI_PER_CALL_USD: ${AI_PER_CALL_USD:-0.25}
+      AI_PRICE_IN: ${AI_PRICE_IN:-}
+      AI_PRICE_OUT: ${AI_PRICE_OUT:-}
       SCHEDULER_ENGINE: "off"
       AUTO_SCAN: "0"
       DJANGO_DEBUG: "0"
