@@ -171,6 +171,16 @@
     </span>
   </div>
   <div id="sym-ai" class="p-2"></div>
+  {% comment %}
+    كلّ نداءٍ يُحفَظ — فإجابةٌ تُعرَض ثمّ تُفقَد بإغلاق التبويب
+    تعني أنّك دفعت مرّتين للسؤال نفسه.
+  {% endcomment %}
+  <details class="px-2 pb-2">
+    <summary class="ds-text-xs ds-text-muted" style="cursor:pointer">
+      إجابات محفوظة لهذا الرمز
+    </summary>
+    <div id="sym-ai-history" class="mt-2"></div>
+  </details>
 </section>
 
 {{ payload|json_script:"page-data" }}
@@ -212,8 +222,11 @@ if (typeof LightweightCharts === "undefined") {
    * الجداول كلّها يضاعف الفاتورة بلا أن يضيف للنموذج ما يشرحه.
    */
   if (window.TogetherAsk) {
+    TogetherAsk.mountHistory(document.getElementById("sym-ai-history"),
+                             DATA.symbol);
     TogetherAsk.mount(document.getElementById("sym-ai"), {
       purpose: "symbol",
+      subject: DATA.symbol,
       payload: function () {
         var txt = function (id) {
           var n = document.getElementById(id);
@@ -225,9 +238,6 @@ if (typeof LightweightCharts === "undefined") {
           الإغلاق: txt("h-close") || DATA.close,
           الدرجة: txt("h-score"),
           الحكم: txt("h-ready") + " · " + txt("h-decision"),
-          المطلوب: ["اشرح ماذا تعني هذه القراءة",
-                    "وما الذي يدعم الدخول وما الذي يضعفه",
-                    "ولا تقترح سعراً ولا توصِ بشراء"],
         }, null, 1);
       },
     });

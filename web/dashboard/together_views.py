@@ -53,12 +53,34 @@ PURPOSES = {
     "study": "تفسير دراسة رمز",
 }
 
+# ═══ مخطَّطٌ ثابت ═══
+#
+# كان الطلب «‏JSON صالحاً» بلا حقولٍ محدّدة، فعاد النموذج بحقولٍ
+# يخترعها في كل مرّة ونصوصٍ فيها ‎\n‎ و‏«•» داخل السطر الواحد.
+# فتعذّر عرضُها إلّا خاماً — وهو ما ظهر على الشاشة.
+#
+# والمخطَّط هنا يجعل القوائم **مصفوفات**: كل بندٍ عنصر، فتُرسَم
+# قائمةً نظيفة بلا أن تُفكَّك نصوصٌ بفواصل مخترَعة.
 SYSTEM_AR = """\
 أنت محلّل كمّي في منصّة CS Edge. تقرأ أرقاماً محسوبة وتشرحها.
-لا تخترع رقماً لم يُعطَ لك، ولا تتنبّأ بسعر، ولا توصي بشراءٍ أو بيع.
-وإن كانت البيانات لا تكفي لحكمٍ فقل ذلك صراحةً.
-المنصّة استشارية: قرار التنفيذ لصاحبها وحده.
-تكتب بالعربية المهنية وتُخرج JSON صالحاً فقط بالحقول المطلوبة."""
+
+قواعد ملزِمة:
+- لا تخترع رقماً لم يُعطَ لك.
+- لا تتنبّأ بسعر، ولا توصي بشراءٍ أو بيع، ولا تقترح وقفاً أو هدفاً.
+- إن كانت البيانات لا تكفي لحكمٍ فقل ذلك في «ما_لا_نعرفه».
+- المنصّة استشارية: قرار التنفيذ لصاحبها وحده.
+
+أعِد JSON صالحاً بهذه الحقول **وحدها**:
+
+{
+  "الخلاصة": "فقرة واحدة، ثلاثة أسطر على الأكثر",
+  "يدعم": ["بند", "بند"],
+  "يضعف": ["بند", "بند"],
+  "ما_لا_نعرفه": ["بند"]
+}
+
+كل بندٍ جملةٌ قصيرة مستقلّة. ولا تضع ‎\\n‎ ولا نقاطاً ولا شُرَطاً
+داخل البنود — القائمة تتكفّل بذلك."""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -181,14 +203,30 @@ def api_together_health(request):
 
 
 def _run(key: str, system: str, user: str, purpose: str,
-         max_tokens: int) -> None:
-    from scanner.ai_advisor import spend
+         max_tokens: int, subject: str = "") -> None:
+    from scanner.ai_advisor import archive, spend
     from scanner.ai_advisor.providers import together_provider as tp
 
     started = time.time()
     try:
         out = tp.TogetherProvider().complete(
             system, user, purpose=purpose, max_tokens=max_tokens)
+        # ═══ يُحفَظ قبل أن يُعرَض ═══
+        #
+        # إجابةٌ تُعرَض ثمّ تُفقَد بإغلاق التبويب تعني أنّك دفعت
+        # مرّتين للسؤال نفسه — وهو نقيض «عند الطلب فقط».
+        u = out.get("usage") or {}
+        try:
+            row = archive.save(
+                subject=subject or purpose, purpose=purpose,
+                model=out.get("model", ""), answer=out.get("text", ""),
+                question=user, cost=u.get("cost", 0.0),
+                tokens_in=u.get("tokens_in", 0),
+                tokens_out=u.get("tokens_out", 0),
+                latency_ms=out.get("latency_ms"))
+            out = {**out, "archive_id": row["id"], "at": row["at"]}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("تعذّرت أرشفة الإجابة: %s", str(exc)[:120])
         _write(key, {"state": "done", "result": out,
                      "elapsed": round(time.time() - started, 1)})
     except spend.BudgetExceeded as exc:
@@ -252,9 +290,13 @@ def api_together_ask(request):
                                         "كلّ نداءٍ يُنفَق."}, status=429)
         _write(key, {"state": "running"})
 
+    # الموضوع يُمرَّر صريحاً كي يُرشَّح به الأرشيف لاحقاً
+    subject = (request.POST.get("subject") or "").strip().upper()[:40]
+
     user = f"الغرض: {PURPOSES[purpose]}\n\nالبيانات:\n{payload}"
     threading.Thread(target=_run,
-                     args=(key, SYSTEM_AR, user, purpose, max_tokens),
+                     args=(key, SYSTEM_AR, user, purpose, max_tokens,
+                           subject),
                      name=f"together-{purpose}", daemon=True).start()
 
     est_in = tp._rough_tokens(SYSTEM_AR) + tp._rough_tokens(user)
@@ -262,6 +304,29 @@ def api_together_ask(request):
         "ok": True, "state": "running", "key": key,
         "estimate_usd": spend.estimate_cost(tp.model_id(), est_in, max_tokens),
     })
+
+
+@require_GET
+def api_together_history(request):
+    """الإجابات المحفوظة — لرمزٍ أو الأحدث عامّةً.
+
+    قراءةٌ من ملفٍّ فقط: لا نداءَ مدفوع هنا بحال.
+    """
+    from scanner.ai_advisor import archive
+
+    subject = (request.GET.get("subject") or "").strip()
+    one = (request.GET.get("id") or "").strip()
+    if one:
+        row = archive.get(one)
+        if not row:
+            return JsonResponse({"ok": False, "reason": "غير موجودة"},
+                                status=404)
+        return JsonResponse({"ok": True, "answer": row})
+    if subject:
+        return JsonResponse({"ok": True, "subject": subject.upper(),
+                             "answers": archive.list_for(subject)})
+    return JsonResponse({"ok": True, "answers": archive.recent(),
+                         "stats": archive.stats()})
 
 
 @require_GET

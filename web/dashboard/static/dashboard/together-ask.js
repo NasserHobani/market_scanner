@@ -87,6 +87,8 @@
         purpose: opts.purpose || "symbol",
         payload: payload,
         max: String(opts.max || 1200),
+        // الموضوع يُرشَّح به الأرشيف — ولولاه لاختلطت الرموز
+        subject: String(opts.subject || ""),
       });
 
       window.postJSON("/api/ai/together/ask/", body)
@@ -168,25 +170,172 @@
 
         var r = d.result || {};
         var u = r.usage || {};
-        var text = r.text || "";
-        var body;
-        try {
-          body = JSON.stringify(JSON.parse(text), null, 2);
-        } catch (e) { body = text; }
-
         out.innerHTML =
-          '<pre class="small" style="white-space:pre-wrap;' +
-          'background:var(--ds-surface-2);padding:10px;border-radius:6px;' +
-          'max-height:26rem;overflow:auto">' + esc(body) + "</pre>" +
-          '<p class="ds-text-xs ds-text-muted">' +
+          renderAnswer(r.text || "") +
+          '<p class="ds-text-xs ds-text-muted mt-2">' +
           "كلّف " + usd(u.cost) + " · " + (u.tokens_in || 0) + " داخل · " +
           (u.tokens_out || 0) + " خارج · " + (r.latency_ms || 0) + " م.ث" +
+          (r.archive_id ? " · محفوظة" : "") +
           "</p>" +
           '<p class="ds-text-xs ds-text-muted">قراءةٌ لغوية لأرقامٍ ' +
           "محسوبة. وإن تعارضت مع الأرقام فالأرقام هي الحقيقة.</p>";
+        if (window.__tgReload) window.__tgReload();
       })
       .catch(function () {});
   }
 
-  window.TogetherAsk = { mount: mount };
+  /* ═══════════════════════════════════════════════════════════
+   *  عرض الإجابة
+   * ═══════════════════════════════════════════════════════════
+   *
+   * كان: ``JSON.stringify(JSON.parse(text), null, 2)`` — فيُعاد
+   * تهريب النصّ، فتظهر ‎\n‎ و‎\"‎ حروفاً على الشاشة. وهو ما رآه
+   * المستخدم: فقرةٌ متلاصقة فيها ``•n\.`` و``\"الدرجة\"``.
+   *
+   * والعلاج ليس تجميلاً: القيمة تُقرأ **بعد** التحليل وتُرسَم
+   * أقساماً — عنواناً ونصّاً أو قائمة.
+   */
+
+  var TONE = {
+    "يدعم": "success", "يضعف": "risk",
+    "ما_لا_نعرفه": "warn", "الخلاصة": "",
+  };
+
+  function humanize(k) {
+    return String(k).replace(/_/g, " ");
+  }
+
+  /* نصٌّ قد يحمل أسطراً أو نقاطاً — يصير فقراتٍ أو قائمة */
+  function textBlock(s) {
+    var parts = String(s)
+      .split(/\r?\n+|(?:^|\s)[•·\-−]\s+/)
+      .map(function (x) { return x.trim(); })
+      .filter(Boolean);
+    if (parts.length <= 1) {
+      return '<p class="mb-1">' + esc(parts[0] || s) + "</p>";
+    }
+    return '<ul class="mb-1" style="padding-inline-start:1.1rem">' +
+      parts.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") +
+      "</ul>";
+  }
+
+  function valueBlock(v) {
+    if (Array.isArray(v)) {
+      if (!v.length) return '<p class="ds-text-muted mb-1">—</p>';
+      return '<ul class="mb-1" style="padding-inline-start:1.1rem">' +
+        v.map(function (x) {
+          return "<li>" + (typeof x === "object"
+            ? esc(JSON.stringify(x)) : esc(x)) + "</li>";
+        }).join("") + "</ul>";
+    }
+    if (v && typeof v === "object") {
+      return Object.keys(v).map(function (k) {
+        return '<div class="mb-1"><span class="ds-text-xs ds-text-muted">' +
+          esc(humanize(k)) + ":</span> " + esc(String(v[k])) + "</div>";
+      }).join("");
+    }
+    return textBlock(v);
+  }
+
+  function section(key, value) {
+    var tone = TONE[key] === undefined ? "" : TONE[key];
+    return '<section class="mb-3">' +
+      '<h4 class="h6 mb-1' + (tone ? " ds-value-" + tone : "") + '">' +
+      esc(humanize(key)) + "</h4>" +
+      '<div class="small">' + valueBlock(value) + "</div></section>";
+  }
+
+  function renderAnswer(text) {
+    var data = null;
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+
+    /* ═══ والنصّ لا يُرمى إن لم يكن JSON ═══
+     *
+     * ردٌّ غير متوافق مع المخطَّط كلّفك مالاً فعلاً. فيُعرَض
+     * نصّاً مقروءاً — لا يُخفى ولا يُعرَض خاماً بين أقواس. */
+    if (!data || typeof data !== "object") {
+      return '<div class="small">' + textBlock(text) + "</div>" +
+        '<p class="ds-text-xs ds-value-warn">لم يلتزم النموذج ' +
+        "بالمخطَّط — عُرض نصّه كما ورد.</p>";
+    }
+
+    /* الترتيب مقصود: الخلاصة أوّلاً، ثمّ ما يضعف قبل ما يدعم —
+       فالانحياز الطبيعيّ نحو التأكيد، وما يُقرأ أوّلاً يُوزن أكثر. */
+    var ORDER = ["الخلاصة", "يضعف", "يدعم", "ما_لا_نعرفه"];
+    var seen = {};
+    var html = "";
+    ORDER.forEach(function (k) {
+      if (data[k] !== undefined) { html += section(k, data[k]); seen[k] = 1; }
+    });
+    Object.keys(data).forEach(function (k) {
+      if (!seen[k]) html += section(k, data[k]);
+    });
+    return '<div style="background:var(--ds-surface-2);padding:12px 14px;' +
+      'border-radius:8px">' + html + "</div>";
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+   *  الإجابات المحفوظة
+   * ═══════════════════════════════════════════════════════════ */
+
+  function mountHistory(host, subject) {
+    if (!host) return;
+    function load() {
+      fetch("/api/ai/together/history/?subject=" +
+            encodeURIComponent(subject), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var list = (d && d.answers) || [];
+          if (!list.length) {
+            host.innerHTML = '<p class="ds-text-xs ds-text-muted">' +
+              "لا إجابة محفوظة لهذا الرمز بعد.</p>";
+            return;
+          }
+          host.innerHTML = list.map(function (a) {
+            return '<div class="d-flex align-items-center gap-2 py-1 ' +
+              'tg-hist-row" style="cursor:pointer" data-id="' +
+              esc(a.id) + '">' +
+              '<span class="ds-text-xs ds-text-muted" dir="ltr">' +
+              esc(String(a.at).replace("T", " ").slice(0, 16)) + "</span>" +
+              '<span class="ds-text-xs">' + usd(a.cost) + "</span>" +
+              '<span class="ds-text-xs ds-text-muted">' +
+              esc(a.model || "") + "</span>" +
+              '<span class="ds-btn ds-btn--sm" style="margin-inline-start:auto"' +
+              ">اعرض</span></div>" +
+              '<div class="tg-hist-body" data-for="' + esc(a.id) +
+              '" hidden></div>';
+          }).join("");
+        })
+        .catch(function () {});
+    }
+    window.__tgReload = load;
+    load();
+
+    host.addEventListener("click", function (e) {
+      var row = e.target.closest(".tg-hist-row");
+      if (!row) return;
+      var id = row.dataset.id;
+      var body = host.querySelector('[data-for="' + CSS.escape(id) + '"]');
+      if (!body) return;
+      if (!body.hidden) { body.hidden = true; return; }
+      body.hidden = false;
+      body.innerHTML = '<span class="ds-text-muted small">يحمّل…</span>';
+      fetch("/api/ai/together/history/?id=" + encodeURIComponent(id),
+            { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.ok) {
+            body.innerHTML = '<p class="small down">تعذّر</p>';
+            return;
+          }
+          body.innerHTML = renderAnswer(d.answer.answer || "");
+        })
+        .catch(function () {
+          body.innerHTML = '<p class="small down">تعذّر</p>';
+        });
+    });
+  }
+
+  window.TogetherAsk = { mount: mount, mountHistory: mountHistory,
+                         renderAnswer: renderAnswer };
 })();

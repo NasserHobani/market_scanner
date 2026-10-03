@@ -220,7 +220,87 @@ c("  ورابطٌ إلى السقوف", "/settings/#ai_cost" in sym)
 # بناؤها عند التحميل يرسل ما كان عند فتح الصفحة لا ما يراه الآن
 # بعد تبديل الفريم.
 c("  والحمولة دالّة", "payload: function ()" in sym)
-c("  ولا يوصي بشراء", "ولا توصِ بشراء" in sym)
+c("  والموضوع يُمرَّر", "subject: DATA.symbol" in sym)
+
+
+# ═══════════ ٦ج) العرض والحفظ ═══════════
+#
+# ═══ ما كان ═══
+#
+# ``JSON.stringify(JSON.parse(text), null, 2)`` يُعيد تهريب
+# النصّ، فتظهر ‎\n‎ و‎\"‎ حروفاً على الشاشة: فقرةٌ متلاصقة فيها
+# ``•n\.`` و``\"الدرجة\"``. وهو ما رآه المستخدم.
+c("٦ج لا تهريبٌ مزدوج",
+  "JSON.stringify(JSON.parse(text)" not in js, "ما زال يُعاد تهريبه")
+c("  والإجابة تُرسَم أقساماً", "function renderAnswer" in js
+  and "function section" in js)
+c("  والمصفوفة قائمة", "Array.isArray(v)" in js)
+c("  والنصّ يُفكَّك بالأسطر", "split(/\\r?\\n+" in js)
+# ═══ والمضادّ قبل المؤيّد ═══
+#
+# ما يُقرأ أوّلاً يُوزن أكثر، والانحياز الطبيعيّ نحو التأكيد.
+_ord = js.split("var ORDER")[1][:120] if "var ORDER" in js else ""
+c("  و«يضعف» قبل «يدعم»",
+  _ord.index("يضعف") < _ord.index("يدعم")
+  if ("يضعف" in _ord and "يدعم" in _ord) else False, _ord[:80])
+# ═══ والردّ المخالف لا يُرمى ═══
+#
+# كلّفك مالاً فعلاً.
+c("  والمخالف يُعرَض نصّاً", "لم يلتزم النموذج" in js)
+
+# ═══ ومخطَّطٌ ثابت ═══
+#
+# بلا حقولٍ محدّدة يخترع النموذج حقولاً في كل مرّة ونصوصاً فيها
+# ‎\n‎ داخل السطر — فتعذّر عرضُها إلّا خاماً.
+for fld in ("الخلاصة", "يدعم", "يضعف", "ما_لا_نعرفه"):
+    c(f"  والحقل «{fld}» مطلوب", fld in vsrc)
+c("  والبنود مصفوفات", "القائمة تتكفّل بذلك" in vsrc)
+
+
+# ═══════════ ٦د) كلّ إجابةٍ تُحفَظ ═══════════
+#
+# إجابةٌ تُعرَض ثمّ تُفقَد بإغلاق التبويب تعني أنّك دفعت مرّتين
+# للسؤال نفسه — وهو نقيض «عند الطلب فقط».
+from scanner.ai_advisor import archive as A  # noqa: E402
+
+asrc = source_of(ROOT / "scanner" / "ai_advisor" / "archive.py")
+acode = code_of(ROOT / "scanner" / "ai_advisor" / "archive.py")
+c("٦د الأرشيف موجود", "def save" in acode and "def list_for" in acode)
+c("  والسبب مكتوب", "دفعت مرّتين للسؤال نفسه" in asrc)
+# ═══ ومنفصلٌ عن سجلّ المال ═══
+#
+# إثقالُ السجلّ المحاسبيّ بالنصوص يجعل كل حساب ميزانية يقرأ
+# ميغابايتات.
+c("  ومنفصل عن الإنفاق", A.ARCHIVE != S.LEDGER)
+c("  وسببه", "سجلٌّ محاسبيّ" in asrc)
+c("  ويُحفَظ عند النجاح", "archive.save(" in v)
+c("  والفشل لا يُضيّع الإجابة",
+  "تعذّرت أرشفة الإجابة" in v)
+c("  ويُرشَّح بالرمز", "def list_for" in acode and "subject" in acode)
+c("  وسقفٌ للملفّ", "MAX_ROWS" in acode and "def _trim" in acode)
+c("  والقصّ بالعدّ لا بالحجم", "القصّ بالعدّ لا بالحجم" in asrc)
+# ولا مفاتيح في الأرشيف
+c("  ولا أسرار فيه",
+  "api_key" not in acode.lower() and "token\"" not in acode.lower())
+
+c("  ونقطةُ قراءة", "def api_together_history" in v)
+c("  وبلا نداءٍ مدفوع", "لا نداءَ مدفوع هنا" in vsrc)
+_u = code_of(ROOT / "web" / "dashboard" / "urls.py")
+c("  ومسجَّلة", '"api/ai/together/history/"' in _u)
+c("  والشاشة تعرضها", "mountHistory" in js and "sym-ai-history" in sym)
+
+# والأرشيف يعمل فعلاً — لا بقراءة المصدر وحدها
+_row = A.save(subject="TESTUSDT", purpose="symbol", model="m",
+              answer='{"الخلاصة":"ت"}', question="س", cost=0.0001,
+              tokens_in=10, tokens_out=5)
+c("  والحفظ يعيد معرّفاً", bool(_row.get("id")), str(_row)[:80])
+_got = A.list_for("TESTUSDT")
+c("  والقراءة تجده", any(r["id"] == _row["id"] for r in _got),
+  str(len(_got)))
+c("  وبلا نصّ السؤال", all("question" not in r for r in _got))
+c("  والمفرد يحمل الإجابة",
+  (A.get(_row["id"]) or {}).get("answer") == '{"الخلاصة":"ت"}')
+c("  ورمزٌ آخر لا يراه", not A.list_for("LAYOUJADUSDT"))
 
 u = code_of(ROOT / "web" / "dashboard" / "urls.py")
 for p in ("api/ai/together/", "api/ai/together/ask/",

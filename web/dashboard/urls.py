@@ -157,6 +157,9 @@ urlpatterns = [
          name="api_together_ask"),
     path("api/ai/together/status/", together_views.api_together_status,
          name="api_together_status"),
+    # الإجابات المحفوظة — قراءةٌ من ملفّ، بلا أيّ نداءٍ مدفوع
+    path("api/ai/together/history/", together_views.api_together_history,
+         name="api_together_history"),
     # دراسة رمزٍ واحد على تاريخه — مستوياتٌ وشروط
     path("study/", study_views.study_page, name="study"),
     path("api/study/start/", study_views.api_study_start,
