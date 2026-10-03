@@ -1,23 +1,40 @@
 # -*- coding: utf-8 -*-
 """نداء Together — بزرٍّ صريح، وبتكلفةٍ معروضة قبل الضغط وبعده.
 
-═══ لماذا نقطةٌ مستقلّة ═══
+═══ العطب الذي عولج ═══
 
-بقيّة المزوّدين تُنادى من محرّك المستشار بسياقٍ مبنيّ. وهذا
-يُنادى **لحظةَ يطلبه المستخدم** على ما يراه أمامه — فلا يمرّ
-بمسار الارتداد الذي قد يختاره تلقائياً.
+كانت المهامّ في قاموسٍ داخل العملية. و‏gunicorn يعمل بـ**ثلاثة
+عمّال**: الطلب الذي يبدأ النداء يصل عاملاً، والاستعلام عن حاله
+قد يصل عاملاً آخر لا يعرف المفتاح — فيردّ ``idle`` إلى الأبد.
+
+فبدا الزرّ «لا يفعل شيئاً»: النداء يعمل فعلاً ويُنفَق، والنتيجة
+تُحفَظ في ذاكرة عاملٍ لا يسأله أحد.
+
+وهو العطب نفسه الذي عولج في الجدولة من قبل — «حاوية الويب وحاوية
+المجدول ذاكرتان منفصلتان» — وأعدتُه هنا بين عمّال العملية الواحدة.
+
+والعلاج: ملفٌّ في ``data/`` يراه الثلاثة. والوحدة مشتركة بينهم
+بالبناء.
+
+═══ ومفتاحٌ ثابت ═══
+
+كان ``hash(payload)`` — و‏Python يُعشّي تجزئة النصوص لكل عملية
+(‏PYTHONHASHSEED). فالمفتاح نفسه يختلف بين عاملٍ وآخر ولو وُجد
+الملفّ. فصار ‎SHA-1‎: ثابتٌ عبر العمليات والإقلاعات.
 
 ═══ ولا نداءَ من جدولة ═══
 
 لا يُستورَد هذا الملفّ في ``cron.py`` ولا في أيّ معالج مهمّة،
-وفحصٌ بنيويّ يمنع ذلك. «لن أناديه في حلقة» نيّةٌ يكسرها سطرٌ
-واحد بعد أشهر.
+وفحصٌ بنيويّ يمنع ذلك.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import threading
 import time
+from pathlib import Path
 
 from django.views.decorators.http import require_GET, require_POST
 
@@ -25,9 +42,9 @@ from .jsonsafe import JsonResponse
 
 log = logging.getLogger("dashboard.together")
 
-_JOBS: dict[str, dict] = {}
+#: عمر المهمّة على القرص
+_TTL = 1800.0
 _LOCK = threading.Lock()
-_TTL = 900.0
 
 #: ما يُسمح بسؤاله — ولا نصَّ حرّ من المتصفّح
 PURPOSES = {
@@ -44,21 +61,122 @@ SYSTEM_AR = """\
 تكتب بالعربية المهنية وتُخرج JSON صالحاً فقط بالحقول المطلوبة."""
 
 
+# ═══════════════════════════════════════════════════════════════
+#  حالة المهمّة — على القرص لا في الذاكرة
+# ═══════════════════════════════════════════════════════════════
+
+def _dir() -> Path:
+    p = Path(__file__).resolve().parents[2] / "data" / "ai_jobs"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _key(purpose: str, payload: str) -> str:
+    """مفتاحٌ ثابت عبر العمليات — ‎SHA-1‎ لا ``hash``."""
+    h = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+    return f"{purpose}-{h}"
+
+
+def _file(key: str) -> Path:
+    # اسمٌ آمن: المفتاح من ‎hexdigest‎ فلا يحمل فواصل مسار
+    safe = "".join(ch for ch in key if ch.isalnum() or ch in "-_")[:48]
+    return _dir() / f"{safe}.json"
+
+
+def _read(key: str) -> dict | None:
+    path = _file(key)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if time.time() - float(data.get("at") or 0) > _TTL:
+        return None
+    return data
+
+
+def _write(key: str, data: dict) -> None:
+    """كتابةٌ ذرّية: مؤقّتٌ ثمّ استبدال.
+
+    الكتابة المباشرة تترك ملفّاً نصفه مكتوب إن قُرئ في أثنائها —
+    وثلاثة عمّالٍ يقرؤون في كل ثانيتين.
+    """
+    data = {**data, "at": time.time()}
+    path = _file(key)
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False),
+                       encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:  # noqa: BLE001
+        log.warning("تعذّر حفظ حال المهمّة: %s", str(exc)[:90])
+
+
+def _sweep() -> None:
+    now = time.time()
+    try:
+        for f in _dir().glob("*.json"):
+            if now - f.stat().st_mtime > _TTL:
+                f.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _running_count() -> int:
+    n = 0
+    try:
+        for f in _dir().glob("*.json"):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if d.get("state") == "running" and \
+                    time.time() - float(d.get("at") or 0) < 300:
+                n += 1
+    except OSError:
+        pass
+    return n
+
+
+# ═══════════════════════════════════════════════════════════════
+#  النقاط
+# ═══════════════════════════════════════════════════════════════
+
 @require_GET
 def api_together_health(request):
     """حال المفتاح والإنفاق — يُقرأ بلا أيّ نداءٍ مدفوع."""
     from scanner.ai_advisor import spend
     from scanner.ai_advisor.providers import together_provider as tp
 
+    # ═══ ولا يرمي ═══
+    #
+    # هذه أوّل ما تُنادى عند فتح الصفحة. وسقوطها يترك الشارة
+    # بشرطاتٍ بلا سبب — وهو ما يبدو عطباً في كل شيء.
+    try:
+        s = spend.summary()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("تعذّر قراءة الإنفاق: %s", str(exc)[:120])
+        s = {"today_usd": 0.0, "month_usd": 0.0,
+             "limits": spend.limits(), "error": str(exc)[:120]}
+
+    try:
+        on = spend.enabled()
+    except Exception:  # noqa: BLE001
+        on = True
+
     return JsonResponse({
         "ok": True,
         "configured": tp.configured(),
+        "enabled": on,
         "model": tp.model_id(),
-        "spend": spend.summary(),
+        "spend": s,
         "why": "" if tp.configured() else (
             "مفتاح Together غير مضبوط. أنشئه من api.together.ai ← "
             "Settings ← API Keys، وأضفه في بورتينر ← Environment "
-            "variables: TOGETHER_API_KEY."),
+            "variables: TOGETHER_API_KEY.")
+        if not tp.configured() else (
+            "" if on else "النداء مُطفأ من الإعدادات ← «الذكاء المدفوع»"),
     })
 
 
@@ -71,36 +189,31 @@ def _run(key: str, system: str, user: str, purpose: str,
     try:
         out = tp.TogetherProvider().complete(
             system, user, purpose=purpose, max_tokens=max_tokens)
-        with _LOCK:
-            _JOBS[key] = {"state": "done", "result": out,
-                          "elapsed": round(time.time() - started, 1),
-                          "at": time.time()}
+        _write(key, {"state": "done", "result": out,
+                     "elapsed": round(time.time() - started, 1)})
     except spend.BudgetExceeded as exc:
-        with _LOCK:
-            _JOBS[key] = {"state": "budget", "error": str(exc),
-                          "at": time.time(),
-                          "elapsed": round(time.time() - started, 1)}
+        _write(key, {"state": "budget", "error": str(exc),
+                     "elapsed": round(time.time() - started, 1)})
     except Exception as exc:  # noqa: BLE001
-        log.warning("تعذّر نداء Together: %s", str(exc)[:160])
-        with _LOCK:
-            _JOBS[key] = {"state": "failed", "error": str(exc)[:240],
-                          "at": time.time(),
-                          "elapsed": round(time.time() - started, 1)}
+        log.warning("تعذّر نداء Together: %s", str(exc)[:200])
+        _write(key, {"state": "failed", "error": str(exc)[:300],
+                     "elapsed": round(time.time() - started, 1)})
 
 
 @require_POST
 def api_together_ask(request):
-    """يبدأ نداءً واحداً في الخلفية ويعود فوراً.
-
-    النموذج قد يستغرق عشرات الثواني، وانتظارُه داخل الطلب يُجمّد
-    عاملاً من ثلاثة.
-    """
+    """يبدأ نداءً واحداً في الخلفية ويعود فوراً."""
     from scanner.ai_advisor import spend
     from scanner.ai_advisor.providers import together_provider as tp
 
     if not tp.configured():
         return JsonResponse(
             {"ok": False, "reason": "مفتاح Together غير مضبوط"}, status=400)
+    if not spend.enabled():
+        return JsonResponse(
+            {"ok": False,
+             "reason": "النداء المدفوع مُطفأ من الإعدادات ← "
+                       "«الذكاء المدفوع»."}, status=400)
 
     purpose = (request.POST.get("purpose") or "").strip()
     if purpose not in PURPOSES:
@@ -108,49 +221,42 @@ def api_together_ask(request):
                             status=400)
 
     payload = (request.POST.get("payload") or "").strip()
-    # ═══ حدٌّ على المُدخَل ═══
-    #
-    # الوحدات تُحسَب بالطول، فنصٌّ طويل = فاتورةٌ كبيرة. والسقف
-    # الماليّ يمنعها بعد ذلك، وهذا يمنعها قبله برسالةٍ أوضح.
     if not payload:
         return JsonResponse({"ok": False, "reason": "لا بيانات"}, status=400)
     if len(payload) > 24000:
         return JsonResponse(
             {"ok": False,
-             "reason": f"المُرسَل {len(payload)} حرفاً — والحدّ ٢٤٬٠٠٠. "
-                       "قلّل ما تُرسله."}, status=400)
+             "reason": f"المُرسَل {len(payload)} حرفاً — والحدّ ٢٤٬٠٠٠."},
+            status=400)
 
+    lim = spend.limits()
     try:
-        max_tokens = max(200, min(2000, int(request.POST.get("max") or 1200)))
+        asked = int(request.POST.get("max") or lim.get("max_tokens") or 1200)
     except (TypeError, ValueError):
-        max_tokens = 1200
+        asked = 1200
+    max_tokens = max(200, min(int(lim.get("max_tokens") or 1200), asked))
 
-    key = f"{purpose}|{abs(hash(payload)) % 10**9}"
+    key = _key(purpose, payload)
     with _LOCK:
-        job = _JOBS.get(key)
-        if job and job["state"] == "running":
+        _sweep()
+        prev = _read(key)
+        if prev and prev.get("state") == "running":
             return JsonResponse({"ok": True, "state": "running", "key": key})
-        now = time.time()
-        for k in [k for k, v in _JOBS.items()
-                  if v.get("state") != "running"
-                  and now - v.get("at", now) > _TTL]:
-            _JOBS.pop(k, None)
         # ═══ نداءٌ واحد في وقتٍ واحد ═══
         #
         # كلّ نداءٍ يُنفَق. والتوازي يضاعف الفاتورة على ضغطتين
         # متتاليتين بلا أن يُقصَد.
-        if any(v["state"] == "running" for v in _JOBS.values()):
+        if _running_count() >= 1:
             return JsonResponse(
                 {"ok": False, "reason": "نداءٌ جارٍ — انتظره. "
                                         "كلّ نداءٍ يُنفَق."}, status=429)
-        _JOBS[key] = {"state": "running", "at": time.time()}
+        _write(key, {"state": "running"})
 
     user = f"الغرض: {PURPOSES[purpose]}\n\nالبيانات:\n{payload}"
     threading.Thread(target=_run,
                      args=(key, SYSTEM_AR, user, purpose, max_tokens),
                      name=f"together-{purpose}", daemon=True).start()
 
-    # تقديرٌ قبليّ يُعرَض فوراً — كي يُرى الثمن قبل النتيجة
     est_in = tp._rough_tokens(SYSTEM_AR) + tp._rough_tokens(user)
     return JsonResponse({
         "ok": True, "state": "running", "key": key,
@@ -163,15 +269,25 @@ def api_together_status(request):
     from scanner.ai_advisor import spend
 
     key = (request.GET.get("key") or "").strip()
-    job = _JOBS.get(key)
+    job = _read(key)
+    try:
+        s = spend.summary()
+    except Exception:  # noqa: BLE001
+        s = {}
     if not job:
-        return JsonResponse({"ok": True, "state": "idle"})
-    out = {"ok": True, "state": job["state"],
+        # ═══ ``idle`` حالةٌ صريحة ═══
+        #
+        # كانت الواجهة تمرّ عليها إلى فرع «تمّ»، فترسم نتيجةً
+        # فارغة: «كلّف — · 0 داخل · 0 خارج». فبدا النداء وكأنّه
+        # نجح ولم يُنتج شيئاً.
+        return JsonResponse({"ok": True, "state": "idle", "spend": s})
+
+    out = {"ok": True, "state": job.get("state", "idle"),
            "elapsed": job.get("elapsed",
-                              round(time.time() - job["at"], 1)),
-           "spend": spend.summary()}
-    if job["state"] == "done":
-        out["result"] = job["result"]
-    elif job["state"] in ("failed", "budget"):
+                              round(time.time() - float(job.get("at") or 0), 1)),
+           "spend": s}
+    if job.get("state") == "done":
+        out["result"] = job.get("result") or {}
+    elif job.get("state") in ("failed", "budget"):
         out["error"] = job.get("error", "")
     return JsonResponse(out)

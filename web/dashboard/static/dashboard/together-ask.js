@@ -20,8 +20,24 @@
   function esc(s) { return DS.esc(String(s == null ? "" : s)); }
 
   function usd(v) {
-    if (v === null || v === undefined) return "—";
+    if (v === null || v === undefined || v !== v) return "—";
     return "$" + Number(v).toFixed(4);
+  }
+
+  /* ═══ الشارة لا تمتلئ بشَرَطات ═══
+   *
+   * «اليوم — من — · الشهر —» لا تقول شيئاً، وتُقرأ عطباً في كل
+   * شيء. فإن غاب الإنفاق يُقال السبب بدل عرض فراغٍ بشكل رقم. */
+  function budgetText(d) {
+    var s = d.spend || {};
+    var lim = s.limits || {};
+    if (s.today_usd === undefined || lim.daily_usd === undefined) {
+      return '<span class="ds-value-warn">تعذّرت قراءة الإنفاق' +
+        (s.error ? ": " + esc(s.error) : "") + "</span>";
+    }
+    return "اليوم " + usd(s.today_usd) + " من " + usd(lim.daily_usd) +
+      " · الشهر " + usd(s.month_usd) + " من " + usd(lim.monthly_usd) +
+      ' <span class="ds-text-muted">· ' + esc(d.model || "") + "</span>";
   }
 
   function mount(host, opts) {
@@ -41,22 +57,24 @@
 
     /* الحال يُقرأ بلا نداءٍ مدفوع */
     fetch("/api/ai/together/", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        /* انتهت الجلسة: الوسيط يردّ ‎401‎ لا صفحة دخول */
+        if (r.status === 401) { window.location = "/accounts/login/"; return null; }
+        return r.json();
+      })
       .then(function (d) {
-        if (!d.configured) {
+        if (!d) return;
+        if (!d.configured || d.enabled === false) {
           badge.textContent = d.why || "غير مضبوط";
           badge.className = "ds-text-xs ds-value-warn tg-budget";
           return;
         }
-        var s = d.spend || {};
         btn.disabled = false;
-        badge.innerHTML = "اليوم " + usd(s.today_usd) + " من " +
-          usd((s.limits || {}).daily_usd) +
-          " · الشهر " + usd(s.month_usd) + " من " +
-          usd((s.limits || {}).monthly_usd) +
-          ' <span class="ds-text-muted">· ' + esc(d.model) + "</span>";
+        badge.innerHTML = budgetText(d);
       })
-      .catch(function () { badge.textContent = "تعذّر فحص الحال"; });
+      .catch(function (e) {
+        badge.textContent = "تعذّر فحص الحال: " + String(e).slice(0, 60);
+      });
 
     btn.addEventListener("click", function () {
       var payload = typeof opts.payload === "function"
@@ -94,6 +112,8 @@
     });
   }
 
+  var idleHits = 0;
+
   function poll(key, btn, out, badge) {
     fetch("/api/ai/together/status/?key=" + encodeURIComponent(key),
           { credentials: "same-origin" })
@@ -101,17 +121,37 @@
       .then(function (d) {
         if (!d || !d.ok) return;
         if (d.state === "running") {
+          idleHits = 0;
           out.innerHTML = '<span class="ds-text-muted small">يعمل… ' +
             (d.elapsed || 0) + " ث</span>";
+          return;
+        }
+        /* ═══ ‎idle‎ ليست نجاحاً ═══
+         *
+         * كانت تمرّ إلى فرع «تمّ» فتُرسَم نتيجةٌ فارغة:
+         * «كلّف — · 0 داخل · 0 خارج». فيبدو النداء ناجحاً ولم
+         * يُنتج شيئاً — وهو أسوأ من خطأٍ صريح.
+         *
+         * ومهلةٌ قصيرة قبل الحكم: الكتابة على القرص قد تتأخّر
+         * لحظةً بعد البدء. */
+        if (d.state === "idle") {
+          idleHits += 1;
+          if (idleHits < 4) {
+            out.innerHTML =
+              '<span class="ds-text-muted small">ينتظر البدء…</span>';
+            return;
+          }
+          clearInterval(timer); timer = null;
+          btn.disabled = false;
+          out.innerHTML = '<p class="small down">ضاع أثر الطلب — ' +
+            "لم تُعثَر حالته. أعد المحاولة، وإن تكرّر فالسبب في " +
+            "السجلّ: <code dir='ltr'>docker logs &lt;web&gt;</code></p>";
           return;
         }
         clearInterval(timer); timer = null;
         btn.disabled = false;
 
-        var s = d.spend || {};
-        badge.innerHTML = "اليوم " + usd(s.today_usd) + " من " +
-          usd((s.limits || {}).daily_usd) +
-          " · الشهر " + usd(s.month_usd);
+        badge.innerHTML = budgetText({ spend: d.spend, model: "" });
 
         if (d.state === "budget") {
           /* تجاوزُ السقف ليس عطباً — هو الحارس يعمل */

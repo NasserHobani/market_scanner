@@ -162,7 +162,38 @@ c("  والمبتور يُتخطّى", "continue" in scode and "except ValueErro
 v = code_of(ROOT / "web" / "dashboard" / "together_views.py")
 c("٦ الحال بلا نداءٍ مدفوع", "def api_together_health" in v)
 c("  والنداء في خيط", "threading.Thread" in v)
-c("  وواحدٌ في وقتٍ واحد", 'v["state"] == "running"' in v)
+c("  وواحدٌ في وقتٍ واحد", "_running_count() >= 1" in v)
+
+# ═══ ٦أ) الحالة على القرص لا في الذاكرة ═══
+#
+# ‏gunicorn بثلاثة عمّال: الطلب الذي يبدأ النداء يصل عاملاً،
+# والاستعلام قد يصل آخر لا يعرف المفتاح — فيردّ ``idle`` أبداً.
+# فبدا الزرّ «لا يفعل شيئاً» والنداء يعمل ويُنفَق.
+vsrc = source_of(ROOT / "web" / "dashboard" / "together_views.py")
+c("٦أ الحالة على القرص", "def _write" in v and "def _read" in v)
+c("  والسبب موثَّق", "ثلاثة عمّال" in vsrc)
+c("  ولا قاموسٌ في الذاكرة", "_JOBS" not in v, "ما زال في الذاكرة")
+# ═══ ومفتاحٌ ثابت ═══
+#
+# ``hash`` مُعشّى لكل عملية، فالمفتاح يختلف بين عاملٍ وآخر.
+c("  والمفتاح ‎sha1‎ لا ‎hash‎",
+  "hashlib.sha1" in v and "abs(hash(" not in v)
+c("  والكتابة ذرّية", "tmp.replace(path)" in v)
+# و‎idle‎ حالةٌ صريحة لا فراغ
+c("  و‎idle‎ تُردّ صريحة", '"state": "idle"' in v)
+js_idle = js.split('d.state === "idle"')[1][:400] if \
+    'd.state === "idle"' in js else ""
+c("  والواجهة تعالجها", bool(js_idle), "تمرّ إلى فرع «تمّ»")
+c("  ولا تُرسَم نجاحاً", "ضاع أثر الطلب" in js)
+# والشارة لا تمتلئ بشَرَطات
+c("  والشارة تقول السبب", "تعذّرت قراءة الإنفاق" in js)
+# وأداةٌ تقطع الشكّ
+doc = ROOT / "tools_doctor_ai.py"
+c("  وأداة تشخيص", doc.exists())
+if doc.exists():
+    dt = source_of(doc)
+    c("    تفحص بلا إنفاق", "--live" in dt and "لم يُرسَل شيء" in dt)
+    c("    وتفحص مجلّد المهامّ", "قابل للكتابة" in dt)
 c("  والغرض محصور", "PURPOSES" in v and "غرض غير معروف" in v)
 c("  وحدٌّ على المُدخَل", "24000" in v)
 # ولا يُرسَل نصٌّ حرّ من المتصفّح نظاماً
