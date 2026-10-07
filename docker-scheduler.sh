@@ -35,6 +35,15 @@ INTERVAL="${SCHEDULER_INTERVAL_SECONDS:-60}"
 # باقي الثقيل. والميزانية تُفحَص **قبل** حجز كل مهمّة — فما لم
 # يُحجَز يبقى مستحقّاً ولا يُتخطّى صامتاً.
 HEAVY_BUDGET="${SCHEDULER_HEAVY_BUDGET_SECONDS:-1500}"
+# ═══ ومهلةٌ صارمة فوق الميزانية ═══
+#
+# الميزانية تمنع بدء مهمّةٍ جديدة. وهذه تقطع واحدةً **علقت** —
+# وهما مختلفتان: الأولى تنظيم، والثانية إنقاذ.
+#
+# وتكون أطول من الميزانية بهامش: الميزانية تنتهي أوّلاً في
+# الأحوال الطبيعية، وهذه لا تعمل إلّا حين يعلق شيء.
+HEAVY_TIMEOUT="${SCHEDULER_HEAVY_TIMEOUT_SECONDS:-2400}"
+LIGHT_TIMEOUT="${SCHEDULER_LIGHT_TIMEOUT_SECONDS:-300}"
 
 # ‏SIGTERM من ``docker stop`` يجب أن يُنهي الانتظار فوراً لا بعد
 # دقيقة. وبلا هذا ينتظر Docker عشر ثوانٍ ثمّ يقتل العملية قسراً —
@@ -99,8 +108,26 @@ heavy_loop() {
   trap 'h_running=0' TERM INT
   while [ "$h_running" -eq 1 ]; do
     h_started=$(date +%s)
-    python web/manage.py run_jobs --lane heavy --budget "$HEAVY_BUDGET" || \
-      printf '⚠ فشلت دورة ثقيلة (%s) — أتابع\n' "$(date -Is)"
+    # ═══ مهلةٌ صارمة ═══
+    #
+    # الميزانية تمنع **بدء** مهمّةٍ جديدة، ولا توقف واحدةً علقت.
+    # وقراءةٌ شبكية بلا مهلة تُعلّق العملية إلى الأبد — فتقف
+    # الدورة الثقيلة كلّها، ويبقى الصفّ «يعمل» في الشاشة.
+    #
+    # والمقيس: ``scan:us`` استغرقت ١٩٣ دقيقة وفترتها خمس عشرة.
+    #
+    # و‎timeout‎ يرسل TERM ثمّ KILL بعد ثلاثين ثانية إن لم تستجب.
+    # والمهمّة المقطوعة تبقى «تعمل» في القاعدة — و``reclaim_stale``
+    # يستعيدها في الدورة التالية.
+    timeout --signal=TERM --kill-after=30s "${HEAVY_TIMEOUT}s" \
+      python web/manage.py run_jobs --lane heavy --budget "$HEAVY_BUDGET"
+    rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      printf '⚠ قُطعت دورة ثقيلة بعد %sث (%s) — تُستعاد المعلّقة\n' \
+             "$HEAVY_TIMEOUT" "$(date -Is)"
+    elif [ "$rc" -ne 0 ]; then
+      printf '⚠ فشلت دورة ثقيلة (rc=%s · %s) — أتابع\n' "$rc" "$(date -Is)"
+    fi
     [ "$h_running" -eq 1 ] || break
     # ═══ ولو انتهت فوراً ═══
     #
@@ -131,8 +158,11 @@ while [ "$running" -eq 1 ]; do
   # معلّقة تظهر، والدورة الطويلة المشروعة لا تُتَّهم.
   : > /tmp/scheduler-heartbeat
 
-  python web/manage.py run_jobs --lane light || \
-    printf '⚠ فشلت دورة خفيفة (%s) — أتابع\n' "$(date -Is)"
+  # والخفيفة بمهلةٍ أقصر: مهمّةٌ ثوانٍ لا تحتاج دقائق، وتعليقُها
+  # يوقف الحسم والمراقبة والتنبيهات معاً.
+  timeout --signal=TERM --kill-after=15s "${LIGHT_TIMEOUT}s" \
+    python web/manage.py run_jobs --lane light || \
+    printf '⚠ تعثّرت دورة خفيفة (%s) — أتابع\n' "$(date -Is)"
 
   [ "$running" -eq 1 ] || break
 

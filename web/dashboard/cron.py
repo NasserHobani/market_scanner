@@ -803,6 +803,83 @@ def claim_due(*, limit: int = 40, lane: str | None = None,
     return claimed
 
 
+# ═══════════════════════════════════════════════════════════════
+#  استعادة المعلّقات
+# ═══════════════════════════════════════════════════════════════
+#
+# ═══ العطب ═══
+#
+# ``run_job`` يكتب ``last_status="running"`` قبل العمل، ويكتب
+# النتيجة بعده. وما بينهما قد لا يكتمل: إعادة نشرٍ، أو ``docker
+# stop`` بلغ مهلته، أو قتلٌ لنفاد الذاكرة، أو انقطاع شبكةٍ يُعلّق
+# قراءةً بلا مهلة.
+#
+# فيبقى الصفّ «يعمل» إلى الأبد. وظهر في الشاشة: ``scan:us`` تقول
+# «تعمل الآن» وآخر تشغيلٍ لها **قبل ثلاث عشرة ساعة**.
+#
+# وضررُه ليس تجميلياً: من ينظر إلى الشاشة لا يعرف أيّ مهمّةٍ تعمل
+# حقّاً وأيّها ماتت، فيبحث عن عطبٍ في مكانٍ ليس فيه.
+#
+# ═══ والعمر لا المعرّف ═══
+#
+# لا سبيل لمعرفة أنّ العملية ماتت: معرّفات العمليات تتكرّر، وهي
+# في حاوياتٍ مختلفة أصلاً. والعمر وحده يكفي — وهو ما استُعمل في
+# أقفال المزامنة من قبل، للسبب نفسه.
+
+#: مهمّةٌ «تعمل» منذ أكثر من هذا تُعدّ ميتة
+STALE_AFTER_SECONDS = 3600.0
+
+#: ومضاعفُ فترتها — أيّهما أطول. فمسحٌ فترته ١٥ دقيقة قد يطول
+#: مشروعاً، ومهمّةٌ فترتها يوم لا تُتَّهم بعد ساعة.
+STALE_INTERVAL_FACTOR = 4
+
+
+def reclaim_stale(*, now=None) -> list[str]:
+    """يُنهي المهامّ العالقة في «يعمل» ويعيد مفاتيحها.
+
+    ولا ترمي: تعذّر الاستعادة يجب ألّا يمنع الدورة من العمل.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import ScheduledJob
+
+    now = now or timezone.now()
+    freed: list[str] = []
+    try:
+        rows = list(ScheduledJob.objects.filter(last_status="running"))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("تعذّر فحص المعلّقات: %s", str(exc)[:120])
+        return freed
+
+    for job in rows:
+        if not job.last_run_at:
+            continue
+        age = (now - job.last_run_at).total_seconds()
+        limit = max(STALE_AFTER_SECONDS,
+                    STALE_INTERVAL_FACTOR * (job.interval_seconds or 0))
+        if age < limit:
+            continue
+        # ═══ تُسمّى بما هي ═══
+        #
+        # ليست «فشلت»: لم يُبلَّغ عن فشل. وليست «نجحت». هي عملٌ
+        # بدأ ولم يُعرَف مصيره — والتسمية الصريحة تمنع البحث في
+        # المكان الخطأ.
+        msg = (f"عُلِّقت — بدأت قبل {age / 3600:.1f} ساعة ولم تُسجَّل "
+               "نهايتها. والغالب أنّ العملية أُنهيت في أثنائها "
+               "(إعادة نشر أو قتلٌ لنفاد الذاكرة أو قراءةٌ بلا مهلة).")
+        if _db_write(
+                lambda j=job, m=msg: ScheduledJob.objects.filter(
+                    pk=j.pk).update(last_status="stale",
+                                    last_message=m[:300]),
+                f"استعادة {job.code}"):
+            freed.append(job.code)
+            log.warning("استُعيدت مهمّة معلّقة: %s (%.0f ثانية)",
+                        job.code, age)
+    return freed
+
+
 def run_due(*, block: bool = False, lane: str | None = None,
             budget: float = 0.0) -> list[dict]:
     """يشغّل كل مستحقّ.
@@ -842,6 +919,13 @@ def run_due(*, block: bool = False, lane: str | None = None,
     out = []
     started = time.monotonic()
     served: set[str] = set()
+    # ═══ تُستعاد المعلّقات قبل أيّ عمل ═══
+    #
+    # وإلّا بقي الصفّ «يعمل» إلى الأبد، فلا يُعرَف ما يعمل حقّاً
+    # ممّا مات. والاستعادة رخيصة: استعلامٌ على صفوفٍ قليلة.
+    for code in reclaim_stale():
+        out.append({"code": code, "status": "stale",
+                    "message": "استُعيدت — كانت معلّقة"})
     while True:
         # ═══ الميزانية قبل الحجز ═══
         if budget > 0 and (time.monotonic() - started) >= budget:

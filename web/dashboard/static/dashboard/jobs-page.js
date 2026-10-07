@@ -28,13 +28,30 @@
     ok: "var(--ds-success)",
     fail: "var(--ds-risk)",
     running: "var(--ds-info)",
+    stale: "var(--ds-warn)",
     skipped: "var(--ds-warn)",
     never: "var(--ds-text-muted)",
   };
   var LABEL = {
     ok: "نجحت", fail: "فشلت", running: "تعمل الآن",
+    /* ═══ «معلّقة» ليست «تعمل» ═══
+     *
+     * مهمّةٌ بدأت ولم تُسجَّل نهايتها. وظهرت ``scan:us`` تقول
+     * «تعمل الآن» وآخر تشغيلٍ لها قبل ثلاث عشرة ساعة — فبحث
+     * القارئ عن عطبٍ في مكانٍ ليس فيه. */
+    stale: "معلّقة",
     skipped: "مؤجَّلة", never: "لم تعمل بعد",
   };
+
+  /* ═══ و«تعمل» التي طال أمدها تُعلَّم قبل أن تُستعاد ═══
+   *
+   * الاستعادة تقع في دورة الجدولة. وبين الموت والدورة التالية
+   * نافذةٌ يبقى فيها الصفّ أزرق — فتُعلَّم هنا بصرياً فوراً. */
+  function looksStuck(j) {
+    if (j.last_status !== "running" || !j.last_run_at) return false;
+    var age = (Date.now() - new Date(j.last_run_at).getTime()) / 1000;
+    return age > Math.max(3600, 4 * (j.interval_seconds || 0));
+  }
 
   /* المدّة بوحدةٍ يقرأها الإنسان: «1847ms» تحتاج قسمة ذهنية. */
   function ms(v) {
@@ -69,10 +86,15 @@
   }
 
   function row(j) {
-    var tone = TONE[j.last_status] || TONE.never;
+    var st = looksStuck(j) ? "stale" : j.last_status;
+    var tone = TONE[st] || TONE.never;
+    var hint = st === "stale"
+      ? ' title="بدأت ولم تُسجَّل نهايتها — تُستعاد في الدورة القادمة"'
+      : "";
     return '<tr data-id="' + j.id + '">' +
-      '<td><span style="color:' + tone + ';font-weight:600">●</span> ' +
-        esc(LABEL[j.last_status] || j.last_status) + "</td>" +
+      "<td" + hint + '><span style="color:' + tone +
+        ';font-weight:600">●</span> ' +
+        esc(LABEL[st] || st) + "</td>" +
       "<td><b>" + esc(j.name) + "</b>" +
         '<div class="small muted">' + esc(j.code) + "</div></td>" +
       '<td class="small">' + esc(j.handler_label) + "</td>" +

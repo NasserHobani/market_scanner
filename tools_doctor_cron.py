@@ -59,6 +59,7 @@ def main() -> int:
     load = {"light": 0.0, "heavy": 0.0}
     impossible: list[str] = []
     late: list[tuple[float, str]] = []
+    stuck: list[tuple[float, str]] = []
 
     hdr = (f"{'المهمّة':<22}{'المسار':<8}{'الفترة':>9}"
            f"{'المدّة':>9}{'التأخّر':>10}  الحِمل")
@@ -73,6 +74,16 @@ def main() -> int:
         if not j.active:
             print(f"{j.code:<22}{'—':<8}{'موقوفة':>9}")
             continue
+
+        # ═══ المعلّقة تُكشَف أوّلاً ═══
+        #
+        # صفٌّ يقول «يعمل» منذ ساعات لم يَعُد يعمل: العملية ماتت
+        # بين كتابة «بدأ» وكتابة النتيجة. وظهرت ``scan:us`` كذلك
+        # وآخر تشغيلٍ لها قبل ثلاث عشرة ساعة.
+        if j.last_status == "running" and j.last_run_at:
+            stuck_for = (now - j.last_run_at).total_seconds()
+            if stuck_for > max(3600, 4 * (j.interval_seconds or 0)):
+                stuck.append((stuck_for, j.code))
 
         # ═══ التأخّر يُقاس بالموعد لا بآخر تشغيل ═══
         #
@@ -112,6 +123,17 @@ def main() -> int:
         print(f"  {lane:<8} {v:5.2f}×  {bar(min(1.0, v))}  {mark}")
 
     print()
+    if stuck:
+        print("✗ مهامّ معلّقة — تقول «تعمل» ولم تُسجَّل نهايتها:")
+        for age, code in sorted(stuck, reverse=True):
+            print(f"    {code}: منذ {age / 3600:.1f} ساعة")
+        print("  والغالب أنّ العملية أُنهيت في أثنائها — إعادة نشر،")
+        print("  أو قتلٌ لنفاد الذاكرة، أو قراءةٌ شبكية بلا مهلة.")
+        print("  وتُستعاد تلقائياً في دورة الجدولة القادمة. ولتعجيلها:")
+        print("    docker exec <scheduler> python web/manage.py "
+              "run_jobs --lane light")
+        print()
+
     if impossible:
         print("✗ مهامّ مستحيلة بالبناء — أطِل فترتها أو خفّف عملها:")
         for code in impossible:
