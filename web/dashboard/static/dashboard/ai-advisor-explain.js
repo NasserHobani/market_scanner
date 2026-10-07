@@ -511,7 +511,8 @@
         }) +
         (review.timestamp
           ? '<span class="ds-text-xs ds-text-muted">' +
-            DS.esc(String(review.timestamp).slice(0, 19).replace("T", " ")) + " UTC</span>"
+            DS.esc(window.Fmt ? Fmt.dateTime(review.timestamp)
+                   : String(review.timestamp)) + "</span>"
           : "") +
       "</div>" +
       metrics +

@@ -57,6 +57,18 @@ class MarketSyncConfig:
     # والعشر دقائق سخيّة: مزامنة زوجٍ واحد ثوانٍ. فما تجاوزها
     # صاحبُه ميّت بأيّ حساب.
     lock_stale_seconds: float = 600.0
+    # ═══ حدّا إنعاش البوّابة ═══
+    #
+    # بوّابة المسح تُنعش المتأخّر قبل أن تسمح بالمسح. وكانت تمرّ
+    # على كل رمزٍ متأخّر تسلسلياً وبلا سقف — فصار زمنُ المسح =
+    # زمنُ مزامنة كل ما تأخّر.
+    #
+    # والمقيس: ``scan:us`` ١٩٣ دقيقة وفترتها خمس عشرة.
+    #
+    # والعمل الحقيقيّ مكانه ``market_sync``: تعمل كل عشر دقائق
+    # بعشرة خيوط متوازية. والبوّابة تُكمِل ما فاتها لا تحلّ محلّها.
+    gate_refresh_seconds: float = 120.0
+    gate_refresh_max_pairs: int = 60
     # Prefer UI timeframes when market YAML lists only the auto-scan TF
     sync_timeframes: tuple[str, ...] = ("15m", "1h", "4h", "1d")
 

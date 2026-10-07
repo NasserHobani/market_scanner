@@ -296,7 +296,7 @@
               'tg-hist-row" style="cursor:pointer" data-id="' +
               esc(a.id) + '">' +
               '<span class="ds-text-xs ds-text-muted" dir="ltr">' +
-              esc(String(a.at).replace("T", " ").slice(0, 16)) + "</span>" +
+              esc(window.Fmt ? Fmt.dateTime(a.at) : a.at) + "</span>" +
               '<span class="ds-text-xs">' + usd(a.cost) + "</span>" +
               '<span class="ds-text-xs ds-text-muted">' +
               esc(a.model || "") + "</span>" +

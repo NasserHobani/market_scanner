@@ -100,6 +100,68 @@ def pair_key(market: str, symbol: str, timeframe: str) -> str:
     return f"{market}|{symbol}|{timeframe}"
 
 
+# ═══════════════════════════════════════════════════════════════
+#  الكتابة المجمَّعة — وهذا كان عنق الزجاجة
+# ═══════════════════════════════════════════════════════════════
+#
+# ═══ ما كان ═══
+#
+# ``update_pair`` يقرأ ملفّ الحالة **كاملاً**، يعدّل مفتاحاً
+# واحداً، ويعيد كتابته **كاملاً**. وتحت ``_LOCK`` — فالخيوط العشرة
+# تصطفّ عليه واحداً واحداً.
+#
+# والملفّ يحمل **كل** الأزواج: ١٥٨٨ زوجاً في سجلّك. فدورةٌ على
+# خمسة آلاف زوج تعني خمسة آلاف قراءةٍ وكتابةٍ لملفٍّ بحجم
+# ميغابايتات — أي عملٌ تربيعيّ، وغيغابايتات من الإدخال والإخراج
+# في الدورة الواحدة.
+#
+# وهو ما يفسّر «المزامنة عشرون دقيقة وفترتها عشر»: الشبكة لم تكن
+# العنق، بل القرص. والخيوط العشرة لا تنفع لأنّ القفل يُسلسلها.
+#
+# ═══ وما صار ═══
+#
+# أثناء دورة المزامنة تُجمَّع التحديثات في الذاكرة وتُكتب **مرّة
+# واحدة** في نهايتها. فخمسة آلاف كتابة تصير واحدة.
+#
+# والنداء المفرد (من زرٍّ أو إنعاشٍ صغير) يبقى كما كان: الكتابة
+# الفورية صحيحةٌ حين تكون واحدة.
+
+_BUFFER: dict[str, dict[str, Any]] = {}
+_BUFFERING = False
+
+
+def batch_begin() -> None:
+    """يبدأ تجميع التحديثات بدل كتابة كلٍّ على حدة."""
+    global _BUFFERING
+    with _LOCK:
+        _BUFFERING = True
+        _BUFFER.clear()
+
+
+def batch_flush(*, config: MarketSyncConfig = DEFAULT_SYNC_CONFIG) -> int:
+    """يكتب المجمَّع دفعةً واحدة ويعيد عدده.
+
+    ولا يرمي: فشل الكتابة يجب ألّا يُضيّع مزامنةً تمّت — الحالة
+    خدمةٌ للعرض، والشموع على القرص أصلاً.
+    """
+    global _BUFFERING
+    with _LOCK:
+        _BUFFERING = False
+        pending = dict(_BUFFER)
+        _BUFFER.clear()
+        if not pending:
+            return 0
+        data = load_status(config)
+        pairs = data.setdefault("pairs", {})
+        for key, payload in pending.items():
+            prev = dict(pairs.get(key) or {})
+            prev.update(payload)
+            pairs[key] = prev
+        data["updated_at"] = utc_now_iso()
+        _atomic_write(_path(config), data)
+        return len(pending)
+
+
 def update_pair(
     market: str,
     symbol: str,
@@ -108,10 +170,16 @@ def update_pair(
     *,
     config: MarketSyncConfig = DEFAULT_SYNC_CONFIG,
 ) -> None:
+    key = pair_key(market, symbol, timeframe)
     with _LOCK:
+        if _BUFFERING:
+            # عمليّةُ قاموسٍ لا قرص — وهي ما يجعل الخيوط تعمل فعلاً
+            prev = dict(_BUFFER.get(key) or {})
+            prev.update(payload)
+            _BUFFER[key] = prev
+            return
         data = load_status(config)
         pairs = data.setdefault("pairs", {})
-        key = pair_key(market, symbol, timeframe)
         prev = dict(pairs.get(key) or {})
         prev.update(payload)
         pairs[key] = prev

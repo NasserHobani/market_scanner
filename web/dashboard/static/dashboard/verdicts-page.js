@@ -62,7 +62,7 @@
 
   function row(r) {
     var f = r.fields || {};
-    var when = String(r.at || "").replace("T", " ").slice(0, 16);
+    var when = window.Fmt ? Fmt.dateTime(r.at) : String(r.at || "");
     return "<tr>" +
       '<td class="small muted">' + esc(when) + "</td>" +
       "<td><b>" + esc(r.symbol) + "</b>" +

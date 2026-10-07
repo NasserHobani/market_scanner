@@ -65,6 +65,8 @@ STEPS = [
     ("فريمات كل سوق", [PY, "tests_tf_prefs.py"]),
     ("سياق البتكوين", [PY, "tests_btc_context.py"]),
     ("مسارا الجدولة", [PY, "tests_cron_lanes.py"]),
+    ("التوقيت وبوّابة المسح", [PY, "tests_timezone_gate.py"]),
+    ("عنق المزامنة", [PY, "tests_sync_perf.py"]),
     # قبل البقيّة: اسم ملفٍّ ساكن خاطئ يُسقط الصفحة كلّها بـ500
     # تحت ‎DEBUG=0‎، ولا يظهر محلّياً.
     ("الملفّات الساكنة", [PY, "tests_assets.py"]),

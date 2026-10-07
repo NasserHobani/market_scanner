@@ -361,6 +361,55 @@ class MarketDataSyncService:
         result["latency_ms"] = latency
         return result
 
+    # ═══ ملفّ السوق يُقرأ مرّةً لا لكل زوج ═══
+    #
+    # ``load_market`` يفتح YAML ويحلّله. وكان يُنادى **داخل** مزامنة
+    # كل زوج: خمسة آلاف تحليلٍ لملفٍّ واحد لا يتغيّر في الدورة.
+    _cfg_cache: dict[str, Any] = {}
+
+    def _market_cfg(self, cfg_dir: Path, market: str):
+        key = f"{cfg_dir}|{market}"
+        hit = self._cfg_cache.get(key)
+        if hit is None:
+            hit = load_market(cfg_dir / f"{market}.yaml")
+            self._cfg_cache[key] = hit
+        return hit
+
+    def _skip_if_current(self, market: str, symbol: str,
+                         timeframe: str) -> dict[str, Any] | None:
+        """‏``None`` إن لزم العمل، وإلّا نتيجةُ تخطٍّ جاهزة.
+
+        ═══ والشكّ يُسقِط إلى المسار الكامل ═══
+
+        ``last_time_on_disk`` تعيد ``None`` عند أيّ التباس — ملفٌّ
+        بصيغةٍ غير متوقَّعة أو مبتور. وحينها لا يُتخطّى شيء: قرارٌ
+        مبنيّ على قراءةٍ ناقصة أسوأ من قراءةٍ كاملة بطيئة.
+        """
+        try:
+            last = storage.last_time_on_disk(market, symbol, timeframe)
+            if last is None:
+                return None
+            behind = storage.bars_behind_from(last, timeframe, market=market)
+            if behind is None or behind > 0:
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+
+        # شمعةٌ جديدة لم تُغلَق: لا شيء يُجلَب
+        status_store.update_pair(market, symbol, timeframe, {
+            "status": FreshnessStatus.FRESH.value,
+            "last_sync": utc_now_iso(),
+            "latest_candle": str(last),
+            "mode": "skip_current",
+            "last_error": "",
+        }, config=self.config)
+        return {
+            "ok": True, "symbol": symbol, "timeframe": timeframe,
+            "mode": "skip_current", "inserted": 0, "updated": 0,
+            "freshness": {"status": FreshnessStatus.FRESH.value,
+                          "latest_candle": str(last)},
+        }
+
     def _sync_unlocked(
         self,
         market: str,
@@ -371,9 +420,24 @@ class MarketDataSyncService:
         config_dir: Path | None,
     ) -> dict[str, Any]:
         cfg_dir = _config_dir(config_dir)
-        cfg = load_market(cfg_dir / f"{market}.yaml")
-        adapter = get_adapter(cfg.adapter)
+        cfg = _market_cfg(cfg_dir, market)
 
+        # ═══ الفحص الرخيص قبل القراءة الكاملة ═══
+        #
+        # ``storage.load`` يقرأ ويحلّل ١٥٠٠ شمعة — قِيست بـ18.76
+        # مللي ثانية للزوج. وخمسة آلاف زوجٍ تعني **٩٤ ثانية** من
+        # القراءة وحدها، معظمها لأزواجٍ لم تُغلَق لها شمعةٌ جديدة
+        # أصلاً.
+        #
+        # و``last_time_on_disk`` يقفز إلى ذيل الملفّ: النتيجة نفسها
+        # بجزءٍ من الألف من الكلفة. فإن لم تُغلَق شمعةٌ جديدة
+        # خرجنا قبل أن نلمس الملفّ كاملاً.
+        if not force:
+            skip = self._skip_if_current(market, symbol, timeframe)
+            if skip is not None:
+                return skip
+
+        adapter = get_adapter(cfg.adapter)
         cached = storage.load(market, symbol, timeframe)
         before_len = 0 if cached is None else len(cached)
         last_before = storage.last_time(cached)
@@ -524,20 +588,35 @@ class MarketDataSyncService:
         def _job(sym: str, tf: str) -> dict:
             return self.sync_pair(market, sym, tf, force=force, config_dir=cfg_dir)
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futs = {
-                pool.submit(_job, sym, tf): (sym, tf)
-                for tf in tfs
-                for sym in syms
-            }
-            for fut in as_completed(futs):
-                try:
-                    results.append(fut.result())
-                except Exception as exc:  # noqa: BLE001
-                    sym, tf = futs[fut]
-                    results.append({"ok": False, "symbol": sym, "timeframe": tf, "reason": str(exc)[:120]})
+        # ═══ حالةُ الأزواج تُكتب مرّةً في النهاية ═══
+        #
+        # كانت تُكتب لكل زوج: قراءة الملفّ كاملاً وتعديل مفتاحٍ
+        # وإعادة كتابته — تحت قفلٍ واحد يُسلسل الخيوط العشرة.
+        # والملفّ يحمل كل الأزواج، فالعمل تربيعيّ.
+        status_store.batch_begin()
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futs = {
+                    pool.submit(_job, sym, tf): (sym, tf)
+                    for tf in tfs
+                    for sym in syms
+                }
+                for fut in as_completed(futs):
+                    try:
+                        results.append(fut.result())
+                    except Exception as exc:  # noqa: BLE001
+                        sym, tf = futs[fut]
+                        results.append({"ok": False, "symbol": sym,
+                                        "timeframe": tf,
+                                        "reason": str(exc)[:120]})
+        finally:
+            # ``finally``: استثناءٌ في الحلقة يجب ألّا يترك التجميع
+            # مفتوحاً — فيبتلع كل تحديثٍ بعده بلا كتابة.
+            written = status_store.batch_flush(config=self.config)
 
         ok = sum(1 for r in results if r.get("ok"))
+        skipped = sum(1 for r in results
+                      if r.get("mode") in ("skip_current", "skip_fresh"))
         return {
             "market": market,
             "symbols": len(syms),
@@ -545,6 +624,13 @@ class MarketDataSyncService:
             "attempted": len(results),
             "successful": ok,
             "failed": len(results) - ok,
+            # ═══ ويُعلَن كم تُخطّي ═══
+            #
+            # «٤٢٦٥ نجحت» لا تفرّق بين جلبٍ تمّ وزوجٍ لم يكن له
+            # شيء. والرقمان مختلفان تماماً في تفسير الزمن.
+            "skipped_current": skipped,
+            "fetched": ok - skipped,
+            "status_writes": written,
             "results": results,
         }
 
@@ -555,11 +641,59 @@ class MarketDataSyncService:
         *,
         symbols: list[str] | None = None,
         config_dir: Path | None = None,
+        deadline_seconds: float | None = None,
+        max_pairs: int | None = None,
     ) -> dict[str, Any]:
-        """Refresh only STALE/CRITICAL pairs — used by scan freshness gate."""
+        """ينعش المتأخّر وحده — بحدٍّ زمنيّ وعدديّ.
+
+        ═══ لماذا صار محدوداً ═══
+
+        كان يمرّ على كل رمزٍ متأخّر **تسلسلياً وبلا سقف**. وهو
+        يُنادى من بوّابة المسح، فصار زمنُ المسح = زمنُ مزامنة كل
+        ما تأخّر.
+
+        والمقيس على الخادم: ``scan:us`` استغرقت **١٩٣ دقيقة**
+        وفترتها خمس عشرة، و``scan:crypto`` ستّاً وخمسين. وليس
+        التحليل هو ما طال — بل المزامنة التي تجري داخله.
+
+        والأسوأ أنّ ``market_sync`` تفعل العمل نفسه كل عشر دقائق
+        بـ**اثني عشر خيطاً**. فالبوّابة تعيد تسلسلياً ما تفعله
+        المزامنة متوازياً.
+
+        ═══ والحدّ لا يُخفي ═══
+
+        ما لم يُنعَش يُعلَن في ``remaining``، والبوّابة تستبعد
+        رموزه من المسح. فالنتيجة مسحٌ على ما هو طازجٌ فعلاً —
+        لا مسحٌ متأخّر ولا انتظارٌ بلا نهاية.
+        """
+        import time as _t
+
         syms = symbols or self.resolve_symbols(market, config_dir=config_dir)
-        refreshed = []
+        budget = (deadline_seconds if deadline_seconds is not None
+                  else float(getattr(self.config, "gate_refresh_seconds",
+                                     120.0)))
+        cap = (max_pairs if max_pairs is not None
+               else int(getattr(self.config, "gate_refresh_max_pairs", 60)))
+
+        started = _t.monotonic()
+        refreshed: list[dict] = []
+        remaining: list[str] = []
+        stopped = ""
+
         for sym in syms:
+            if stopped:
+                remaining.append(sym)
+                continue
+            # ═══ الحدّ يُفحَص قبل الجلب لا بعده ═══
+            if budget > 0 and (_t.monotonic() - started) >= budget:
+                stopped = f"نفد الوقت ({budget:g}ث)"
+                remaining.append(sym)
+                continue
+            if cap > 0 and len(refreshed) >= cap:
+                stopped = f"بلغ الحدّ ({cap} زوجاً)"
+                remaining.append(sym)
+                continue
+
             info = assess_freshness(market, sym, timeframe, config=self.config)
             if info["status"] in (
                 FreshnessStatus.STALE.value,
@@ -568,7 +702,14 @@ class MarketDataSyncService:
                 refreshed.append(self.sync_pair(market, sym, timeframe, config_dir=config_dir))
             elif info["status"] == FreshnessStatus.CRITICAL.value:
                 refreshed.append(self.sync_pair(market, sym, timeframe, force=True, config_dir=config_dir))
-        return {"refreshed": len(refreshed), "results": refreshed}
+
+        if stopped:
+            log.info("إنعاش بوّابة %s/%s توقّف: %s — %d أُنعش و%d بقي",
+                     market, timeframe, stopped, len(refreshed),
+                     len(remaining))
+        return {"refreshed": len(refreshed), "results": refreshed,
+                "remaining": len(remaining), "stopped": stopped,
+                "elapsed": round(_t.monotonic() - started, 1)}
 
     # ── scan gate ─────────────────────────────────────────────
 

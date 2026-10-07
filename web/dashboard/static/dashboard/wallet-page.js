@@ -244,7 +244,7 @@
       fee: '<span class="ds-num ds-text-xs" dir="ltr">' +
         money(r.fee_quote) + "</span>",
       when: '<span class="ds-text-xs ds-text-muted">' +
-        (r.closed_at ? new Date(r.closed_at).toLocaleString("ar-SA") : "—") +
+        Fmt.dateTime(r.closed_at) +
         "</span>",
       _attrs: 'data-key="' + DS.esc(r.symbol + "|" + r.closed_at) + '"',
     };
@@ -511,7 +511,7 @@
           "<th class='num'>عمولة</th></tr></thead><tbody>" +
           d.trades.map(function (t) {
             return "<tr><td class='ds-text-xs'>" +
-              new Date(t.time).toLocaleString("ar-SA") + "</td><td>" +
+              Fmt.dateTime(t.time) + "</td><td>" +
               DS.StatusBadge({ label: t.is_buyer ? "شراء" : "بيع",
                                tone: t.is_buyer ? "success" : "risk" }) +
               "</td><td class='num' dir='ltr'>" + money(t.price) +

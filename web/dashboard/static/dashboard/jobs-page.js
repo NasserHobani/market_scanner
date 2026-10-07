@@ -213,7 +213,7 @@
           d.runs.map(function (r) {
             return "<tr>" +
               '<td class="small muted">' +
-                esc(String(r.started_at).replace("T", " ").slice(0, 19)) +
+                esc(Fmt.dateTime(r.started_at)) +
                 "</td>" +
               '<td class="small"><span style="color:' +
                 (TONE[r.status] || TONE.never) + '">●</span> ' +
