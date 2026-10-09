@@ -390,18 +390,32 @@ check("  والميّت يُستبعَد كالحرج", len(g4["excluded"]) == 1
 g5 = _gate(["fresh"] * 10)
 check("  والحديث كلّه ‏FRESH", g5["code"] == "FRESH" and not g5["excluded"])
 
-# ═══ والبوّابة تُنفَّذ لا تُطبَع ═══
+# ═══ والحماية بعد الجلب لا قبله ═══
 #
-# رأيٌ يُطبع ولا يُنفَّذ أسوأ من غيابه: يَعِد بحمايةٍ لا تقع. فهذا
-# يفحص أنّ أمر المسح يقصّ قائمته فعلاً بما أعادته البوّابة.
+# كانت البوّابة تقصّ قائمة المسح بـ``usable`` أو توقفه كلّه. فصار
+# المسح رهينة ``market_sync``: تتعطّل، فيتقادم القرص، فيُمنع المسح،
+# فلا يُجلب شيء — «537 مشطوباً من 538 · رموز مفحوصة 1». البوّابة
+# كانت تمنع العلاج لا الخطر.
+#
+# والخطر (توصيةٌ بسعرٍ قديم) محروسٌ في ``fetch_only`` **بعد** الجلب.
+# فهذه الفحوص تثبّت العقد الجديد بأضلاعه الثلاثة.
 _scan = (ROOT / "web" / "dashboard" / "management" / "commands"
          / "scan.py").read_text(encoding="utf-8")
 _scode = "\n".join(l for l in _scan.splitlines()
                    if not l.strip().startswith("#"))
-check("  وأمر المسح يقرأ ‏usable", 'gate.get("usable")' in _scode)
-check("  ويقصّ قائمته بها",
-      "symbols = [s for s in symbols if s in allowed]" in _scode)
-check("  ويعلن ما استُبعد", "استُبعد" in _scode)
+check("  المسح لا يقصّ قائمته بالبوّابة",
+      "symbols = [s for s in symbols if s in allowed]" not in _scode)
+check("  ولا يتوقّف عندها", 'if code == "MARKET_DATA_STALE":' not in _scode)
+check("  ولا تُنعش داخله (تسلسليّ)", "auto_refresh=False" in _scode)
+check("  والقديم بعد الجلب يُرفض", "raise StaleData(" in _scode)
+check("  والقرص بلا شبكة إن حمل الجارية", "_b < 1.0" in _scode)
+check("  والفجوة الواسعة تُبنى لا تُدمج",
+      "_gap > cfg.candles - 2" in _scode)
+_views = "\n".join(l for l in (ROOT / "web" / "dashboard" / "views.py")
+                   .read_text(encoding="utf-8").splitlines()
+                   if not l.strip().startswith("#"))
+check("  وزرّ «فحص الآن» بلا بوّابة",
+      "scan_freshness_gate" not in _views.split("def _gated_scan")[1][:900])
 
 
 # ═══════════ ٨) تمرين الإقلاع البارد موجود ═══════════

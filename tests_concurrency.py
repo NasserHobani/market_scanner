@@ -159,8 +159,10 @@ check("٦ بوّابة الحداثة ليست في الطلب",
       "scan_freshness_gate" not in views.split("def api_scan_now")[1]
       .split("def api_scan_status")[0],
       "ما زالت داخل api_scan_now")
-check("  بل في الخيط الخلفي",
-      "scan_freshness_gate" in views.split("def _gated_scan")[1][:900])
+# ولا في الخيط أيضاً: كانت تمنع الجلب الذي يُصلح القديم، فصار الزرّ
+# لا يفحص شيئاً. والمسح يرفض القديم **بعد** الجلب (``StaleData``).
+check("  ولا في الخيط — المسح يحرس نفسه",
+      "scan_freshness_gate" not in views.split("def _gated_scan")[1][:900])
 check("  والمسح يبدأ بخيط", "threading.Thread(" in views)
 check("  والخيط مرصود", 'kind="scan"' in views)
 
@@ -182,7 +184,9 @@ for f, kind in (("web/dashboard/settlement.py", "settlement"),
 sched = code_of("web/dashboard/scheduler.py")
 check("٧ سبب المنع يُسجَّل", "def note_blocked" in sched)
 check("  ويصل عبر الحالة", "last_blocked" in sched)
-check("  والخيط يستدعيه", "note_blocked(" in views)
+# والخيط لم يعد يُمنع فلا يستدعيه؛ والفشل يصل عبر ``last_error``
+# في ``run_scan`` نفسه.
+check("  والفشل يصل عبر الحالة", 'last_error"] = str(exc)' in sched)
 
 # تعذّر الفحص لا يمنع المسح: العطب قد يكون في الفاحص لا في البيانات
 check("  وفشل الفاحص لا يمنع المسح",

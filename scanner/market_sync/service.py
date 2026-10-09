@@ -439,6 +439,16 @@ class MarketDataSyncService:
 
         adapter = get_adapter(cfg.adapter)
         cached = storage.load(market, symbol, timeframe)
+        # ═══ فجوةٌ أوسع من جلبة: إعادة بناء لا دمج ═══
+        #
+        # ``bars_needed`` محدودٌ بـ``candles``، فالدمج يترك ثقباً بين
+        # الذيل القديم والجديد. والقاعدة نفسها في ``scan.fetch_only``
+        # و``resurrect`` — ثلاثة مسارات تكتب الملفّ نفسه، فيجب أن
+        # تتّفق، وإلّا أعاد أحدُها الثقبَ الذي سدّه الآخر.
+        if cached is not None:
+            _gap = storage.bars_behind(cached, timeframe, market=market)
+            if _gap is not None and _gap > cfg.candles - 2:
+                cached = None
         before_len = 0 if cached is None else len(cached)
         last_before = storage.last_time(cached)
 
@@ -1014,8 +1024,24 @@ class MarketDataSyncService:
         # فحين لا يبقى رمزٌ واحد صالح والمشطوبون كثرة، يُسأل كونُ
         # المنصّة: من كان فيه اليوم يُعاد بناؤه.
         if auto_refresh and not usable and counts["dead"]:
-            res = self.resurrect(market, timeframe, symbols=syms,
-                                 config_dir=config_dir)
+            # ═══ والبوّابة تُسعف ولا تُعالج ═══
+            #
+            # ``resurrect`` سقفُه ستّمئة ثانية وألف زوج — وهو صحيحٌ
+            # للأداة اليدوية. لكنّه يُنادى من **داخل المسح**، فصار
+            # المسح يحمل عشر دقائق من الجلب قبل أن يحلّل شمعةً
+            # واحدة. وهو عطبٌ أدخلتُه أنا بهذا الفرع.
+            #
+            # فميزانية البوّابة هي ميزانيتها: شريحةٌ صغيرة تُسعف،
+            # والباقي يُعلَن ويُترك لـ``tools_resurrect.py`` أو
+            # لدورةٍ تالية. مسحٌ ناقصٌ معلوم النقص خيرٌ من مسحٍ
+            # يتأخّر عشر دقائق في كل دورة.
+            res = self.resurrect(
+                market, timeframe, symbols=syms, config_dir=config_dir,
+                deadline_seconds=float(getattr(
+                    self.config, "gate_refresh_seconds", 120.0)),
+                max_pairs=int(getattr(
+                    self.config, "gate_refresh_max_pairs", 60)),
+            )
             if res["rebuilt"] or res["patched"]:
                 return self.scan_freshness_gate(
                     market, timeframe, symbols=syms, auto_refresh=False,

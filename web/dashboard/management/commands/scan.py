@@ -318,44 +318,68 @@ class Command(BaseCommand):
             # قائمة الحظر ميزةٌ إضافية: عطبها يجب ألّا يمنع مسحاً
             self.stderr.write(f"قائمة الحظر: {str(exc)[:120]}")
 
-        # بوابة حداثة البيانات (MD-01): المسح يستهلك بيانات مزامَنة مسبقاً
-        # ولا يقوم بمزامنة تاريخية كاملة. إن كانت البيانات متأخرة قليلاً
-        # تُحدَّث تزايدياً؛ إن كانت حرجة يُرفض المسح بصراحة.
-        use_cached = bool(opts.get("cached"))
+        # ═══════════════════════════════════════════════════════════
+        #  المسح يُصلح بياناته بنفسه — والحماية بعد الجلب لا قبله
+        # ═══════════════════════════════════════════════════════════
+        #
+        # ═══ ما كان ═══
+        #
+        # بوّابةٌ قبل الجلب تقيّم القرص، فإن وجدته قديماً **أوقفت
+        # المسح** (``MARKET_DATA_STALE`` → ``return``) أو **حذفت**
+        # القديم من القائمة (``usable``). والقديم لا يُحدَّث إلّا
+        # بمهمّة ``market_sync`` المنفصلة.
+        #
+        # فصار المسح رهينة مهمّةٍ أخرى: تتعطّل المزامنة، فيتقادم
+        # القرص، فتمنع البوّابة المسح، فلا يُجلب شيء — والجالب
+        # المتوازي بخيوطه الاثني عشر (``fetch_only`` أسفل) موجودٌ
+        # ومعطَّل بالبوّابة التي أمامه. ورأيتَه: «537 مشطوباً من
+        # 538 · رموز مفحوصة 1 · تعذّر جلبها 0».
+        #
+        # البوّابة كانت تمنع **العلاج** لا الخطر.
+        #
+        # ═══ والخطر نفسه محروسٌ في موضعه ═══
+        #
+        # الغاية ألّا تُبنى توصيةٌ على سعرٍ قديم. و``fetch_only`` يفحص
+        # هذا **بعد** الجلب: ما بقي قديماً بعد محاولة التحديث يرمي
+        # ``StaleData`` ولا يصل التحليل. وهذا هو الموضع الصحيح —
+        # القرار على البيانات التي ستُحلَّل، لا على ما كان على القرص
+        # قبل دقيقة.
+        #
+        # ═══ فما صار ═══
+        #
+        #   طازجٌ على القرص   ← يُقرأ بلا شبكة  (كما كان)
+        #   قديمٌ على القرص   ← يُجلب متوازياً  (كان: يُحذف أو يوقف المسح)
+        #   قديمٌ بعد الجلب   ← ``StaleData``   (كما كان)
+        #
+        # والبوّابة تبقى **مقياساً** يُطبع، لا حاجزاً. ولا تُنعش
+        # (``auto_refresh=False``): إنعاشها تسلسليّ، والجالب متوازٍ —
+        # كانت تكرّر عمله ببطءٍ أشدّ داخل المسح نفسه.
+        # و``--full`` يبقى يعني «اجلب كل شيء من جديد».
+        use_cached = not opts.get("full")
+        # يُقاس هنا ويُطوى في ``timing`` أسفل: البوّابة تسبق إنشاءه.
+        t_gate = 0.0
         if not opts.get("skip_freshness_gate") and not opts.get("full"):
             try:
                 from scanner.market_sync import get_service
+                _tg = time.perf_counter()
                 gate = get_service().scan_freshness_gate(
                     cfg.name, timeframe, symbols=list(symbols),
-                    auto_refresh=True,
+                    auto_refresh=False,
                 )
-                if not gate.get("ok"):
-                    code = gate.get("code", "MARKET_DATA_STALE")
-                    reason = gate.get("reason", "بيانات السوق متأخرة")
-                    self.stderr.write(f"{code}: {reason}")
-                    if code == "MARKET_DATA_STALE":
-                        return
-                else:
-                    use_cached = True
-                    # ═══ الاستبعاد يُنفَّذ هنا ═══
-                    #
-                    # البوّابة تقول من يصلح، وهذا السطر هو الذي
-                    # يمنع غيره من الوصول إلى المسح. وبلا تنفيذه
-                    # تصير البوّابة رأياً يُطبع ولا يُنفَّذ — أسوأ
-                    # من غيابها، لأنّها تَعِد بحمايةٍ لا تقع.
-                    usable = gate.get("usable")
-                    if usable is not None:
-                        allowed = set(usable)
-                        dropped = [s for s in symbols if s not in allowed]
-                        symbols = [s for s in symbols if s in allowed]
-                        if dropped:
-                            self.stdout.write(
-                                f"  استُبعد {len(dropped)} رمزاً لقِدَم "
-                                f"بياناته: " + " · ".join(dropped[:8])
-                                + (" …" if len(dropped) > 8 else ""))
-                    self.stdout.write(
-                        f"  حداثة البيانات: {gate.get('code')} "
-                        f"· {len(symbols)} رمزاً للمسح (cached={use_cached})")
+                t_gate = time.perf_counter() - _tg
+                cnt = gate.get("counts") or {}
+                old = int(cnt.get("critical", 0)) + int(cnt.get("dead", 0))
+                self.stdout.write(
+                    f"  حداثة القرص: {gate.get('code')} · "
+                    f"{len(symbols)} رمزاً للمسح"
+                    + (f" · {old} قديمٌ سيُجلب الآن" if old else ""))
+                if old and old >= max(5, len(symbols) // 2):
+                    # المسح سيتعافى وحده، لكنّ السبب يجب أن يُرى:
+                    # قرصٌ قديمٌ كلّه = مهمّة المزامنة لا تعمل.
+                    self.stderr.write(
+                        f"  ⚠ {old} من {len(symbols)} قديمٌ على القرص — "
+                        f"مهمّة market_sync متعطّلة على الأرجح. "
+                        f"المسح يجلبها الآن، لكن راجع /jobs/.")
             except Exception as exc:  # noqa: BLE001
                 self.stderr.write(f"  تعذّرت بوابة الحداثة: {str(exc)[:120]}")
 
@@ -370,7 +394,17 @@ class Command(BaseCommand):
         breakouts: dict[str, dict] = {}
         computed_volumes: dict[str, float] = {}
         # القياس يسبق التحسين: بلا تفصيل زمني يصير ضبط الأداء تخميناً
+        # ═══ و‎gate‎ كان الجزء الوحيد غير المقيس ═══
+        #
+        # البوّابة تُنادي ``incremental_refresh_stale`` — وهو جلبٌ
+        # شبكيّ **تسلسليّ** داخل المسح. فزمنها يدخل في
+        # ``duration_seconds`` ولا يظهر في أيّ خانة من التفصيل،
+        # فتُقرأ «شبكة 4ث» على دورةٍ استغرقت دقيقتين.
+        #
+        # وهذا بالضبط ما يجعل «المسح متأخّر» سؤالاً بلا جواب:
+        # الرقم المعروض صادق والتفصيل ناقص.
         timing = {"read": 0.0, "net": 0.0, "write": 0.0, "calc": 0.0,
+                  "gate": t_gate, "db": 0.0,
                   "bars": 0, "unchanged": 0, "cached": 0}
 
         scorer = score_symbol if opts.get("fast") else score_with_recommendation
@@ -403,14 +437,38 @@ class Command(BaseCommand):
             cached = storage.load(cfg.name, sym, timeframe)
             t_read = time.perf_counter() - t0
 
-            # مسار MD-01: البيانات حديثة من المزامنة الخلفية — لا جلب شبكة
+            # ═══ القرص يُستعمل بلا شبكة إن كان فيه الشمعة الجارية ═══
+            #
+            # كان الشرط ``not is_stale(max_bars=3)`` — أي يُقبل ملفٌّ
+            # متأخّرٌ ثلاث شموع. والقرار يُبنى على ``iloc[-2]``، أي
+            # يفترض أنّ ``iloc[-1]`` هي الجارية. فملفٌّ متأخّرٌ شمعتين
+            # يجعل «آخر شمعة مغلقة» في نظر المحلّل شمعةً مضى عليها
+            # ثلاث فترات — على ‎15m‎ خمسٌ وأربعون دقيقة.
+            #
+            # وما كان يحرسه هو ``market_sync``: يُبقي القرص طازجاً فلا
+            # يتأخّر. وحين تتعطّل المزامنة يتآكل هذا الافتراض صامتاً.
+            #
+            # فالشرط الآن: الملفّ يحمل الشمعة الجارية (تأخّرٌ أقلّ من
+            # شمعة). وإلّا جلبٌ تراكميّ — شمعتان أو ثلاث بطلبٍ واحد.
             if use_cached and cached is not None and len(cached) >= MIN_CANDLES:
-                if not storage.is_stale(cached, timeframe, max_bars=STALE_BARS,
-                                        market=cfg.name):
+                _b = storage.bars_behind(cached, timeframe, market=cfg.name)
+                if _b is not None and _b < 1.0:
                     timing["read"] += t_read
                     timing["cached"] += 1
                     timing["unchanged"] += 1
                     return cached
+
+            # ═══ فجوةٌ أوسع من جلبة تُعاد بناءً لا دمجاً ═══
+            #
+            # ``bars_needed`` محدودٌ بـ``candles``. وملفٌّ متأخّرٌ أكثر
+            # منها يُدمج مع الجديد فيبقى بينهما **ثقب** — والمؤشّرات
+            # تُحسب عبره بلا أن يقول أحدٌ شيئاً: متوسّطٌ يقفز، و‏ATR
+            # يتضخّم، وتقاطعٌ يُرى حيث لا تقاطع. تاريخٌ أقصر ونظيف
+            # خيرٌ من أطولَ مثقوب.
+            if cached is not None:
+                _gap = storage.bars_behind(cached, timeframe, market=cfg.name)
+                if _gap is not None and _gap > cfg.candles - 2:
+                    cached = None
 
             # الناقص وحده لا التاريخ كله: رمز محدَّث يحتاج شمعة أو اثنتين،
             # وطلب 1500 شمعة له يعني طلبين وعشرات الكيلوبايتات بلا فائدة
@@ -566,6 +624,7 @@ class Command(BaseCommand):
         reco_by_symbol = {r.symbol: r.recommendation for r in results}
         score_by_symbol = {r.symbol: r for r in results}
         elapsed = time.time() - started
+        _tdb = time.perf_counter()
 
         with transaction.atomic():
             run = ScanRun.objects.create(
@@ -780,11 +839,37 @@ class Command(BaseCommand):
             self.stderr.write(f"تعذّر حسم الصفقات: {str(exc)[:150]}")
 
         n = max(1, len(results) + failed)
+        timing["db"] = time.perf_counter() - _tdb
+        # ═══ والمجموع يُطابَق على الكلّ ═══
+        #
+        # تفصيلٌ لا يُجمع لا يُكتشَف نقصه. و``أخرى`` هي الفرق بين
+        # ما قيس وما استُغرق فعلاً — فإن كبرت فثمّة جزءٌ غير مقيس،
+        # وهو أهمّ سطرٍ في هذا الإخراج.
+        total = time.time() - started
+        known = (timing["gate"] + timing["net"] + timing["calc"]
+                 + timing["read"] + timing["write"] + timing["db"])
+        other = max(0.0, total - known)
         self.stdout.write(
-            f"  الزمن: شبكة {timing['net']:.1f}ث · تحليل {timing['calc']:.1f}ث · "
-            f"قراءة {timing['read']:.1f}ث · كتابة {timing['write']:.1f}ث"
+            f"  الزمن ({total:.1f}ث): بوّابة {timing['gate']:.1f} · "
+            f"شبكة {timing['net']:.1f} · تحليل {timing['calc']:.1f} · "
+            f"قراءة {timing['read']:.1f} · كتابة {timing['write']:.1f} · "
+            f"قاعدة {timing['db']:.1f} · أخرى {other:.1f}")
+        self.stdout.write(
             f"  ·  {timing['bars'] / n:.0f} شمعة/رمز · "
             f"{timing['unchanged']} بلا جديد")
+        # ═══ والأثقل يُسمّى ═══
+        #
+        # ستّة أرقام تحتاج قراءةً، وسطرٌ واحد يحتاج نظرة. و«المسح
+        # متأخّر» سؤالٌ يُجاب بهذا السطر لا بالتخمين.
+        parts = {"البوّابة": timing["gate"], "الشبكة": timing["net"],
+                 "التحليل": timing["calc"], "القرص": timing["read"]
+                 + timing["write"], "القاعدة": timing["db"],
+                 "غير مقيس": other}
+        worst, wsec = max(parts.items(), key=lambda kv: kv[1])
+        if total > 0:
+            self.stdout.write(
+                f"  ⇒ الأثقل: {worst} — {wsec:.1f}ث "
+                f"({wsec / total * 100:.0f}٪)")
         if storage.storage_format() == "csv":
             self.stdout.write(self.style.WARNING(
                 "  نصيحة: pip install pyarrow — يخزّن بصيغة parquet "

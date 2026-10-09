@@ -727,23 +727,17 @@ def _gated_scan(market: str, timeframe: str | None) -> None:
     """
     from .concurrency import track
 
+    # ═══ لا بوّابة هنا — كانت تمنع العلاج ═══
+    #
+    # كانت بوّابةٌ ثانية تسبق المسح: تقيّم القرص، فإن وجدته قديماً
+    # أعلنت «فشل: لا رمز واحد ببيانات صالحة» **وعادت** — فلا يُجلب
+    # شيء، فيبقى القرص قديماً، فيفشل الزرّ في المرّة التالية أيضاً.
+    # زرُّ «فحص السوق الآن» لا يستطيع أن يفحص السوق الآن.
+    #
+    # والمسح نفسه صار يجلب القديم متوازياً ويرفض بعد الجلب ما بقي
+    # قديماً (``StaleData``). فالحماية قائمة في موضعها، وهذه كانت
+    # نسخةً منها في الموضع الخطأ.
     with track(f"مسح {market} {timeframe or ''}".strip(), kind="scan"):
-        try:
-            from scanner.market_sync import get_service
-
-            with track(f"بوّابة الحداثة {market}", kind="freshness"):
-                gate = get_service().scan_freshness_gate(
-                    market, timeframe or "4h", auto_refresh=True,
-                )
-            if not gate.get("ok"):
-                scheduler.note_blocked(
-                    market, gate.get("reason", "بيانات السوق متأخرة"),
-                    code=gate.get("code", "MARKET_DATA_STALE"))
-                return
-        except Exception:  # noqa: BLE001
-            # تعذّر الفحص لا يمنع المسح: البيانات قد تكون سليمة والعطب
-            # في الفاحص. والمسح نفسه يتحقّق من قِدَم الشموع.
-            pass
         scheduler.run_scan(market, timeframe, force=False, cached=True)
 
 

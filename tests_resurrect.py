@@ -92,6 +92,38 @@ c("  وبلا تكرار لا نهائيّ",
   _g.count("auto_refresh=False") >= 2, str(_g.count("auto_refresh=False")))
 c("  والشرط ‎auto_refresh‎", "if auto_refresh and not usable" in _g)
 
+# ═══ والبوّابة تُسعف ولا تُعالج ═══
+#
+# ``resurrect`` سقفُه ٦٠٠ث و١٠٠٠ زوج — صحيحٌ للأداة اليدوية. لكنّه
+# يُنادى من **داخل المسح**، فبلا تحديد صار المسح يحمل عشر دقائق من
+# الجلب قبل أن يحلّل شمعةً واحدة. وهو عطبٌ أُدخل بهذا الفرع نفسه.
+_rcall = _g.split("self.resurrect(")[1][:400] if "self.resurrect(" in _g else ""
+c("  وبميزانية البوّابة لا ميزانيته",
+  "deadline_seconds=" in _rcall and "max_pairs=" in _rcall, _rcall[:160])
+c("    وهي ‎gate_refresh_*‎", "gate_refresh_seconds" in _rcall
+  and "gate_refresh_max_pairs" in _rcall)
+c("  وسببه", "عشر دقائق من الجلب" in src)
+
+
+# ═══════════ ٣ب) وزمن البوّابة يُقاس ═══════════
+#
+# البوّابة تجلب شبكياً تسلسلياً داخل المسح، وزمنها كان يدخل في
+# ``duration_seconds`` ولا يظهر في أيّ خانة. فتُقرأ «شبكة ٤ث» على
+# دورةٍ استغرقت دقيقتين — رقمٌ صادق وتفصيلٌ كاذب.
+SCAN = ROOT / "web" / "dashboard" / "management" / "commands" / "scan.py"
+sc = code_of(SCAN)
+sc_src = source_of(SCAN)
+c("٣ب زمن البوّابة يُقاس", "t_gate = time.perf_counter() - _tg" in sc)
+c("  ويدخل التفصيل", '"gate": t_gate' in sc)
+c("  وزمن القاعدة كذلك", 'timing["db"] = ' in sc)
+# ═══ والمجموع يُطابَق ═══
+#
+# تفصيلٌ لا يُجمع لا يُكتشَف نقصه.
+c("  و‎أخرى‎ تكشف غير المقيس", "other = max(0.0, total - known)" in sc)
+c("  والأثقل يُسمّى", "الأثقل" in sc)
+c("  وسببه", "رقمٌ صادق وتفصيلٌ كاذب" in src
+  or "الرقم المعروض صادق والتفصيل ناقص" in sc_src)
+
 
 # ═══════════ ٤) الرسالة تقول ماذا يُفعل ═══════════
 #
