@@ -9,6 +9,10 @@
 """
 from __future__ import annotations
 
+import os as _os
+# المجمّع يتجاوز ``urlopen`` المستبدَل هنا — فيطلب الشبكة الحقيقية.
+_os.environ["HTTP_POOL_DISABLE"] = "1"
+
 import sys
 from pathlib import Path
 

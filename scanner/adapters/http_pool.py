@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import urllib.error
@@ -78,6 +79,14 @@ def _get_session():
     with _lock:
         if _session is not None:
             return _session
+        # ═══ مفتاحٌ للفواحص ═══
+        #
+        # فواحص المحوّلات تستبدل ``urllib.request.urlopen`` لتختبر
+        # منطق الإعادة وتبديل المضيف بلا شبكة. والمجمّع يتجاوز
+        # ``urlopen`` — فصارت تلك الفواحص تطلب الشبكة الحقيقية دون
+        # أن يلاحظ أحد. وهذا يعيدها إلى المسار الذي تستبدله.
+        if os.getenv("HTTP_POOL_DISABLE") == "1":
+            return None
         try:
             import requests
             from requests.adapters import HTTPAdapter

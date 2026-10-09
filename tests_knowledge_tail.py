@@ -104,6 +104,29 @@ with tempfile.TemporaryDirectory() as tmp:
     c("٦ البحث لا يغيّر ترتيب المذاكرة", before == after,
       f"{before} ← {after}")
 
+# ═══════════ ٦ب) فهرس الأحداث ═══════════
+#
+# ``history`` كانت تمشي على كل السجلّات لكل مرشّح تشابه — حتى خمسة
+# آلاف مرّة في النداء الواحد، على ملفٍّ بـ429 م.ب.
+with tempfile.TemporaryDirectory() as tmp:
+    p = Path(tmp) / "records.jsonl"
+    R.clear_cache()
+    repo = R.KnowledgeRepository(p)
+    for i in range(9):
+        repo._append(_rec(i))                     # e0 · e1 · e2
+    h = repo.history("e1")
+    c("٦ب الفهرس يجد الحدث", [r.record_id for r in h] ==
+      sorted([r.record_id for r in h], key=lambda x: x) and len(h) == 3,
+      str([r.record_id for r in h]))
+    repo._append(_rec(10))                        # e1 جديد
+    c("  ويتّسع بالإلحاق", len(repo.history("e1")) == 4)
+    c("  والحدث الغائب فارغ", repo.history("zz") == [])
+    c("  والبحث بالحدث يستعمله",
+      len(repo.search(event_id="e1", limit=99)) == 4)
+    p.write_text(json.dumps(_rec(1)) + "\n", encoding="utf-8")
+    c("  والقصّ يُعيد بناءه", len(repo.history("e1")) == 1)
+
+
 # ═══════════ ٧) واللقطة خارج معاملة الحفظ ═══════════
 #
 # كانت داخل ``transaction.atomic()``، فموتُ العملية أثناءها تراجع

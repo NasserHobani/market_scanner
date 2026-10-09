@@ -204,6 +204,26 @@ c("  وسببه", "تسريبٌ صامت" in hp_src)
 alp = code_of(ROOT / "scanner" / "adapters" / "alpaca.py")
 c("  و‎Alpaca‎ تمرّرها للطلب", "headers=headers)" in alp)
 
+# ═══ وحدّ Alpaca يتقاسمه الخيوط ═══
+#
+# «نجح 4512 · فشل 108 · أكثر الأسباب: Alpaca 429». الباقة ٢٠٠ طلب
+# في الدقيقة للحساب، وأربعة خيوطٍ بلا مسافة تبلغ ألفاً.
+c("  و‎Alpaca‎ تنتظر دورها قبل كل طلب",
+  "_wait_turn()" in alp.split("def _get")[1][:1500])
+import threading as _th, time as _tm
+from scanner.adapters import alpaca as _A
+_A._GAP, _A._next_slot[0] = 0.05, 0.0
+_ts = []
+def _w():
+    for _ in range(4):
+        _A._wait_turn(); _ts.append(_tm.monotonic())
+_ths = [_th.Thread(target=_w) for _ in range(3)]
+[x.start() for x in _ths]; [x.join() for x in _ths]
+_ts.sort()
+c("    والمسافة محترمةٌ عبر الخيوط",
+  min(b - a for a, b in zip(_ts, _ts[1:])) >= 0.045,
+  f"{min(b - a for a, b in zip(_ts, _ts[1:])):.3f}")
+
 
 # ═══════════ ٦) أداة القياس ═══════════
 tool = ROOT / "tools_sync_profile.py"

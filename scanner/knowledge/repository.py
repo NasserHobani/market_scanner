@@ -16,12 +16,16 @@ DEFAULT_STORE = Path("data/knowledge/records.jsonl")
 
 
 # ذاكرة السجلّات المقروءة — مفتاحها حالة الملفّ لا الزمن.
-_CACHE: dict[tuple, list] = {}
+_CACHE: dict[str, tuple] = {}
+#: فهرس الأحداث لكل ملفّ: (جيل القراءة، عدد ما فُهرس، القاموس)
+_EVENT_IDX: dict[str, tuple] = {}
+_GEN = 0
 
 
 def clear_cache() -> None:
     """تفريغ الذاكرة — للاختبارات وللأدوات التي تعدّل الملفّ خارجاً."""
     _CACHE.clear()
+    _EVENT_IDX.clear()
 
 
 class KnowledgeRepository:
@@ -88,7 +92,7 @@ class KnowledgeRepository:
         path_key = str(self.path)
         hit = _CACHE.get(path_key)
         if hit is not None:
-            ino, offset, mtime, records = hit
+            ino, offset, mtime, records, gen = hit
             if ino == st.st_ino and offset == st.st_size \
                     and mtime == st.st_mtime_ns:
                 return records
@@ -97,13 +101,45 @@ class KnowledgeRepository:
                 # قائمةٌ جديدة بالمراجع لا نسخٌ للكائنات: ثمانية بايتات
                 # للسجلّ. ومن يحمل القائمة القديمة لا تتغيّر تحت يده.
                 records = records + new
-                _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records)
+                _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records,
+                                    gen)
                 return records
 
         records, end = self._parse_from(0)
+        global _GEN
+        _GEN += 1               # قراءةٌ كاملة = فهرسٌ يُبنى من جديد
         _CACHE.clear()          # مدخلٌ واحد: لا تراكم بين ملفّات
-        _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records)
+        _EVENT_IDX.clear()
+        _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records, _GEN)
         return records
+
+    def _by_event(self) -> dict[str, list[KnowledgeRecord]]:
+        """فهرسٌ بـ``event_id`` — يُبنى تراكمياً مع الذيل.
+
+        ═══ العطب ═══
+
+        ``history(event_id)`` كانت تمشي على **كل** السجلّات لتجد حدث
+        واحداً. وبحث التشابه يناديها لكل مرشّح — حتى خمسة آلاف —
+        فنداءُ تشابهٍ واحد = خمسة آلاف مرورٍ على مئات آلاف السجلّات.
+        والملفّ ‏429 م.ب على خادمك.
+
+        والفهرس يجعلها قراءةً من قاموس. ويُوسَّع بما أُلحق فقط، كما
+        القائمة نفسها.
+        """
+        records = self._read_all()
+        path_key = str(self.path)
+        hit = _CACHE.get(path_key)
+        gen = hit[4] if hit else -1
+        ent = _EVENT_IDX.get(path_key)
+        if ent is None or ent[0] != gen or ent[1] > len(records):
+            idx: dict[str, list[KnowledgeRecord]] = {}
+            start = 0
+        else:
+            _, start, idx = ent
+        for rec in records[start:]:
+            idx.setdefault(rec.event_id, []).append(rec)
+        _EVENT_IDX[path_key] = (gen, len(records), idx)
+        return idx
 
     def _parse_from(self, offset: int) -> tuple[list[KnowledgeRecord], int]:
         """يحلّل من ``offset`` إلى آخر سطرٍ **مكتمل** — ويعيد موضعه.
@@ -153,7 +189,7 @@ class KnowledgeRepository:
                limit: int = 100) -> list[KnowledgeRecord]:
         rows = self._read_all()
         if event_id:
-            rows = [r for r in rows if r.event_id == event_id]
+            rows = list(self._by_event().get(event_id, ()))
         if kind is not None:
             rows = [r for r in rows if r.kind == kind]
         if symbol:
@@ -168,8 +204,8 @@ class KnowledgeRepository:
         return rows[:limit]
 
     def history(self, event_id: str) -> list[KnowledgeRecord]:
-        rows = [r for r in self._read_all() if r.event_id == event_id]
-        rows.sort(key=lambda r: r.created_at)
+        rows = sorted(self._by_event().get(event_id, ()),
+                      key=lambda r: r.created_at)
         return rows
 
     def statistics(self, *, market: str | None = None,

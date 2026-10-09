@@ -55,6 +55,36 @@ import pandas as pd
 
 from .base import MarketAdapter
 
+import threading as _threading
+
+# ═══════════════════════════════════════════════════════════════
+#  حدّ الطلبات — لكل العملية لا لكل خيط
+# ═══════════════════════════════════════════════════════════════
+#
+# باقة Alpaca المجانية **٢٠٠ طلب في الدقيقة** للحساب كلّه. والمزامنة
+# تشغّل أربعة خيوط، وكلٌّ منها يطلب بأسرع ما يردّ الخادم — نحو أربعة
+# في الثانية لكلٍّ، أي قرابة ألف في الدقيقة. فتُرفض البقيّة بـ‎429‎،
+# وإعادة المحاولة في كل خيطٍ منفرداً تزيد الضغط لا تنقصه.
+#
+# والمقيس: «نجح 4512 · فشل 108 · أكثر الأسباب: Alpaca 429».
+#
+# وإنقاص الخيوط لا يحلّها: خيطٌ واحد يتجاوز الحدّ أيضاً إن كان الردّ
+# سريعاً. فالحلّ **مسافةٌ دنيا بين الطلبات** يتقاسمها كل الخيوط.
+# ‏‎ALPACA_RPM‎ يغيّرها لمن عنده باقةٌ أعلى.
+_RPM = max(30, int(os.getenv("ALPACA_RPM", "180") or 180))
+_GAP = 60.0 / _RPM
+_rate_lock = _threading.Lock()
+_next_slot = [0.0]
+
+
+def _wait_turn() -> None:
+    with _rate_lock:
+        now = time.monotonic()
+        slot = max(now, _next_slot[0])
+        _next_slot[0] = slot + _GAP
+    if slot > now:
+        time.sleep(slot - now)
+
 log = logging.getLogger(__name__)
 
 DATA_HOST = "https://data.alpaca.markets"
@@ -609,6 +639,7 @@ class AlpacaAdapter(MarketAdapter):
 
         for attempt in range(self.retries):
             try:
+                _wait_turn()
                 return http_pool.get_json(url, timeout=self.timeout,
                                           headers=headers)
             except urllib.error.HTTPError as exc:

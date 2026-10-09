@@ -55,7 +55,8 @@ c("  وتاريخه معلن", "PRICES_AS_OF" in code_of(
 ssrc = source_of(ROOT / "scanner" / "ai_advisor" / "spend.py")
 scode = code_of(ROOT / "scanner" / "ai_advisor" / "spend.py")
 c("٢ فحصٌ قبليّ موجود", "def check_budget" in scode)
-c("  والسبب مكتوب", "دفتر محاسبةٍ لا حارس" in ssrc)
+# المسافات تُطبَّع: الجملة مكسورةٌ على سطرين في التوثيق.
+c("  والسبب مكتوب", "دفتر محاسبةٍ لا حارس" in " ".join(ssrc.split()))
 
 tcode = code_of(ROOT / "scanner" / "ai_advisor" / "providers"
                 / "together_provider.py")
@@ -128,7 +129,7 @@ c("٤ ‎usage‎ يُقرأ من الردّ", "prompt_tokens" in tcode
   and "completion_tokens" in tcode)
 tsrc = source_of(ROOT / "scanner" / "ai_advisor" / "providers"
                  / "together_provider.py")
-c("  والسبب مكتوب", "يخطئ بثلاثين بالمئة" in tsrc)
+c("  والسبب مكتوب", "يخطئ بثلاثين بالمئة" in " ".join(tsrc.split()))
 c("  والتقدير للسقف وحده", "للسقف وحده لا للفوترة" in tsrc)
 # وسقفٌ على المخرجات: حارسٌ ثانٍ
 c("  وسقفٌ للمخرجات", "DEFAULT_MAX_TOKENS" in tcode)
@@ -181,6 +182,10 @@ c("  والمفتاح ‎sha1‎ لا ‎hash‎",
 c("  والكتابة ذرّية", "tmp.replace(path)" in v)
 # و‎idle‎ حالةٌ صريحة لا فراغ
 c("  و‎idle‎ تُردّ صريحة", '"state": "idle"' in v)
+# ‏``js`` كان يُعرَّف أسفل هذا السطر بعشرين سطراً — ‏NameError
+# أوقف الملفّ كلّه قبل أن يُفحص نصفه.
+js = (ROOT / "web" / "dashboard" / "static" / "dashboard"
+      / "together-ask.js").read_text(encoding="utf-8")
 js_idle = js.split('d.state === "idle"')[1][:400] if \
     'd.state === "idle"' in js else ""
 c("  والواجهة تعالجها", bool(js_idle), "تمرّ إلى فرع «تمّ»")
@@ -230,8 +235,12 @@ c("  والموضوع يُمرَّر", "subject: DATA.symbol" in sym)
 # ``JSON.stringify(JSON.parse(text), null, 2)`` يُعيد تهريب
 # النصّ، فتظهر ‎\n‎ و‎\"‎ حروفاً على الشاشة: فقرةٌ متلاصقة فيها
 # ``•n\.`` و``\"الدرجة\"``. وهو ما رآه المستخدم.
+# التعليقات تُقصّ: التوثيق يذكر السطر القديم ليشرح لماذا أُزيل.
+import re as _re
+_js_code = _re.sub(r"/\*.*?\*/", "", js, flags=_re.S)
+_js_code = _re.sub(r"(?m)^\s*//.*$", "", _js_code)
 c("٦ج لا تهريبٌ مزدوج",
-  "JSON.stringify(JSON.parse(text)" not in js, "ما زال يُعاد تهريبه")
+  "JSON.stringify(JSON.parse(text)" not in _js_code, "ما زال يُعاد تهريبه")
 c("  والإجابة تُرسَم أقساماً", "function renderAnswer" in js
   and "function section" in js)
 c("  والمصفوفة قائمة", "Array.isArray(v)" in js)
@@ -334,8 +343,10 @@ c("  ويُفحَص أوّلاً",
 #
 # ما يُحفظ هناك يدخل قاعدة البيانات، وهي تُنسَخ في ``scanner.dump``
 # عند كل ترحيل — فمفتاحٌ هنا يسافر في كل نسخةٍ احتياطية.
-c("  والمفتاح ليس حقلاً", "TOGETHER_API_KEY" not in sch
-  and "together_api_key" not in sch.lower())
+# حقلٌ = اسمٌ بين علامتي اقتباس. ونصّ المساعدة يذكر المفتاح ليقول
+# إنّه **ليس** هنا — فالبحث عن الكلمة وحدها كان يجده ويفشل.
+c("  والمفتاح ليس حقلاً",
+  not __import__("re").search(r"[\"']together_api_key[\"']", sch, 2))
 c("  والسبب مكتوب",
   "تُنسَخ في ‎scanner.dump‎" in source_of(
       ROOT / "scanner" / "settings_schema.py"))
