@@ -270,6 +270,21 @@ class BinanceAdapter(MarketAdapter):
     # ------------------------------------------------------------- الشبكة
 
     def _get(self, path: str, params: dict):
+        # ═══ الاتّصال يُعاد استعماله ═══
+        #
+        # كان ``urlopen`` يفتح اتّصالاً جديداً لكل طلب: بحث DNS،
+        # ومصافحة TCP، ومصافحة TLS — أربع دورات ذهابٍ وإياب قبل
+        # أن يصل بايتٌ واحد من الشموع.
+        #
+        # والمقيس على خادمك: **997 مللي ثانية** لطلبٍ حمولتُه
+        # بضعة كيلوبايتات. و٢١٥٢ زوجاً في الدورة تعني ٢١٤٦ ثانية
+        # من المصافحات وحدها.
+        #
+        # و``http_pool`` يُبقي الاتّصال مفتوحاً، فالمصافحة مرّةً
+        # لكل اتّصال لا لكل طلب. وهو يرتدّ إلى ``urllib`` إن غابت
+        # ``requests`` — أبطأ لا معطوباً.
+        from . import http_pool
+
         query = urllib.parse.urlencode(params)
         last_error: Exception | None = None
 
@@ -278,10 +293,12 @@ class BinanceAdapter(MarketAdapter):
             delay = 1.0
             for attempt in range(self.retries):
                 try:
-                    req = urllib.request.Request(url, headers=UA)
-                    with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                        self._host = host  # نثبت على المضيف الناجح
-                        return json.loads(resp.read().decode("utf-8"))
+                    # ‏``UA`` تُمرَّر صريحةً: المحوّل هو من يملك هويّته،
+                    # لا المجمّع. وإسقاطُها عند النقل هو ما عطّل ياهو.
+                    data = http_pool.get_json(url, timeout=self.timeout,
+                                              headers=UA)
+                    self._host = host  # نثبت على المضيف الناجح
+                    return data
                 except urllib.error.HTTPError as exc:
                     last_error = exc
                     if exc.code in (418, 429) and attempt < self.retries - 1:

@@ -204,15 +204,28 @@ class YahooAdapter(MarketAdapter):
     # ------------------------------------------------------------- الشبكة
 
     def _get(self, path: str, params: dict):
+        # ‏السوق السعودي ٣٢٥ رمزاً، والمصافحة لكل طلبٍ ثمنُها نفسه
+        # هنا. انظر ``http_pool`` للقياس والشرح.
+        from . import http_pool
+
         query = urllib.parse.urlencode(params)
         last: Exception | None = None
         for host in CHART_HOSTS:
             url = f"{host}{path}?{query}"
             for attempt in range(3):
                 try:
-                    req = urllib.request.Request(url, headers=UA)
-                    with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                        return json.loads(resp.read().decode("utf-8"))
+                    # ═══ و``UA`` تُمرَّر: ياهو ترفض من لا متصفّحَ له ═══
+                    #
+                    # كان ``Request(url, headers=UA)`` يرسل ترويسة
+                    # ‎Mozilla‎. وحين نقلتُ النداء إلى المجمّع أسقطتُها،
+                    # فصار الطلب يحمل ‎market-scanner/0.1‎ — وخادم
+                    # ‎chart‎ يردّ عليه ‎429‎ أو ‎401‎.
+                    #
+                    # وأثرُه غيابٌ كامل لا رسالةُ خطأ: كل رمزٍ أمريكيٍّ
+                    # وسعوديٍّ يفشل جلبُه، فلا شموع جديدة، فالماسح
+                    # يقرأ ملفّاتٍ قديمة ولا يجد فرصة.
+                    return http_pool.get_json(url, timeout=self.timeout,
+                                              headers=UA)
                 except urllib.error.HTTPError as exc:
                     last = exc
                     if exc.code in (429, 503) and attempt < 2:

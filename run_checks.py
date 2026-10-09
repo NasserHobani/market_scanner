@@ -67,6 +67,7 @@ STEPS = [
     ("مسارا الجدولة", [PY, "tests_cron_lanes.py"]),
     ("التوقيت وبوّابة المسح", [PY, "tests_timezone_gate.py"]),
     ("عنق المزامنة", [PY, "tests_sync_perf.py"]),
+    ("إحياء المشطوبين", [PY, "tests_resurrect.py"]),
     # قبل البقيّة: اسم ملفٍّ ساكن خاطئ يُسقط الصفحة كلّها بـ500
     # تحت ‎DEBUG=0‎، ولا يظهر محلّياً.
     ("الملفّات الساكنة", [PY, "tests_assets.py"]),

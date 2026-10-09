@@ -115,12 +115,25 @@ def main() -> int:
 
     net = 0.0
     if args.net:
-        from scanner.adapters import get_adapter
+        from scanner.adapters import get_adapter, http_pool
 
         cfg_m = svc._market_cfg(Path(ROOT / "config"), args.market)
         ad = get_adapter(cfg_m.adapter)
-        per = _ms(lambda: ad.fetch(probe[0], args.tf, 5), 3)
-        net = line("طلبٌ شبكيّ واحد", per)
+
+        # ═══ الأوّل يدفع المصافحة والبقيّة لا ═══
+        #
+        # قياسُ متوسّطٍ يخلطهما ويُخفي الفرق — وهو الفرق كلّه.
+        first = _ms(lambda: ad.fetch(probe[0], args.tf, 5), 1)
+        warm = _ms(lambda: ad.fetch(probe[0], args.tf, 5), 5)
+        net = line("طلبٌ شبكيّ (الأوّل)", first)
+        line("طلبٌ شبكيّ (بعد الإحماء)", warm)
+        st = http_pool.stats()
+        print(f"{'':28}المجمّع: "
+              f"{'مُفعَّل' if st['pool_enabled'] else '**مُطفأ**'} · "
+              f"{st['pooled']} مجمَّع · {st['fallback']} ارتداد")
+        if not st["requests_lib"]:
+            print(f"{'':28}⚠ ‎requests‎ غير مثبّتة — لا إعادة استعمال")
+        net = warm
 
     print()
     print(f"حجم ملفّ الحالة: {size_mb:.2f} ميغابايت")
@@ -139,9 +152,26 @@ def main() -> int:
     print(f"    (توفير ~{t_write:.0f}ث)")
     print(f"  • والذيل يُقرأ قبل الملفّ كاملاً، فما لم تُغلَق له")
     print(f"    شمعةٌ جديدة لا يُقرأ أصلاً (توفير حتى ~{t_full - t_tail:.0f}ث)")
+    if net:
+        # ═══ والتوازي يقسم الشبكة وحدها ═══
+        #
+        # ‏القرص والقفل لا يتوازيان: القفل يُسلسلهما. فالخيوط تقسم
+        # الانتظار الشبكيّ لا غير.
+        from scanner.market_sync.config import DEFAULT_SYNC_CONFIG as D
+
+        workers = D.max_workers
+        print()
+        print(f"بـ{workers} خيوط: الشبكة ≈ "
+              f"{net * pairs_total / 1000.0 / workers:.0f} ثانية للسوق")
+        print("  (والقرص لا يتوازى — القفل يُسلسله، ولهذا جُمّعت "
+              "الكتابة)")
+
     print()
-    print("وما يبقى بعدهما هو الشبكة وحدها — وعلاجُها إطالة الفترة")
-    print("أو تقليل الفريمات، لا مزيدٌ من الخيوط: حدّ المنصّة واحد.")
+    print("وإن بقيت الشبكة هي الأثقل بعد الإحماء فالعلاج:")
+    print("  • قلّل فريمات المزامنة — كل فريمٍ يضرب عدد الرموز")
+    print("  • أو أطِل فترة ‎market_sync‎ لتطابق مدّتها الحقيقية")
+    print("  • ولا مزيدٌ من الخيوط: حدّ Binance على الوزن لكل **IP**")
+    print("    لا لكل اتّصال — فالزيادة تبلغ الحدّ ولا تُنقص الزمن.")
     return 0
 
 

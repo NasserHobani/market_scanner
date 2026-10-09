@@ -711,6 +711,163 @@ class MarketDataSyncService:
                 "remaining": len(remaining), "stopped": stopped,
                 "elapsed": round(_t.monotonic() - started, 1)}
 
+    # ── إحياء المقبرة ─────────────────────────────────────────
+
+    def live_universe(self, market: str, *,
+                      config_dir: Path | None = None) -> set[str] | None:
+        """رموز المنصّة الآن — أو ``None`` إن لم يُعرَف الكون.
+
+        هذا هو **الفارق الوحيد** بين رمزٍ شُطب من المنصّة ورمزٍ
+        تأخّرت مزامنته حتى بدا مشطوباً. وبلا هذا السؤال لا يمكن
+        التمييز بينهما من القرص وحده: كلاهما ملفٌّ آخر شمعةٍ فيه
+        قديمة.
+        """
+        try:
+            cfg = _market_cfg(_config_dir(config_dir), market)
+            name = getattr(cfg, "universe_adapter", "") or cfg.adapter
+            ad = get_adapter(name)
+            if hasattr(ad, "usdt_universe"):
+                return set(ad.usdt_universe(
+                    cfg.min_quote_volume,
+                    top_n=cfg.top_n or self.config.max_symbols_per_market,
+                ))
+            return set(cfg.symbols or []) or None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("تعذّر معرفة كون %s: %s", market, str(exc)[:120])
+            return None
+
+    def resurrect(
+        self,
+        market: str,
+        timeframe: str,
+        *,
+        symbols: list[str] | None = None,
+        config_dir: Path | None = None,
+        deadline_seconds: float | None = None,
+        max_pairs: int | None = None,
+    ) -> dict[str, Any]:
+        """يعيد بناء الرموز التي بدت مشطوبةً وهي ما تزال متداولة.
+
+        ═══ الباب ذو الاتّجاه الواحد ═══
+
+        ``dead`` تعني «آخر شمعة أقدم من مئة شمعة». وقد وُضعت
+        للرمز الذي **شُطب من المنصّة**: ملفٌّ باقٍ على القرص
+        والجلب التراكمي يطلب الناقص فلا يعود بشيء، إلى الأبد.
+
+        لكنّ التعريف لا يفرّق بين سببين:
+
+            رمزٌ شُطب       ← لا علاج، والملاحقة هدرٌ محض
+            مزامنةٌ تعطّلت   ← علاجُه جلبةٌ واحدة
+
+        ومزامنةٌ تتوقّف أكثر من مئة شمعة (‎4h‎ ← سبعة عشر يوماً)
+        تُسقط **السوق كلّه** في الخانة الأولى دفعةً واحدة. وبعدها:
+
+            ``resolve_symbols``        يستبعد المشطوبين
+            بوّابة المسح               تُنعش ``alive`` وحدهم
+            والمشطوب ليس من ``alive``
+
+        فلا شيء يجلب لهم، فيبقون مشطوبين، إلى الأبد. بابٌ يُغلق
+        ولا يُفتح — وهذا ما رأيتَه: ٥٣٧ مشطوباً من ٥٣٨.
+
+        ═══ والفارق يُسأل من المنصّة ═══
+
+        لا يُحزَر من القرص: يُسأل ``live_universe``. فمن كان في
+        كون المنصّة اليوم فهو حيّ مهما قدُم ملفّه.
+
+        ═══ والفجوة تُعاد بناءً لا دمجاً ═══
+
+        ``bars_needed`` محدودٌ بـ``candles`` (١٥٠٠). وفجوةٌ أوسع
+        منها تعني إطاراً فيه **ثقب** بعد الدمج — والمؤشّرات
+        تُحسب عليه بلا أن يقول أحدٌ شيئاً. فما تجاوزت فجوتُه ما
+        تسعه جلبةٌ واحدة يُستبدَل ملفُّه بالكامل: تاريخٌ أقصر
+        ونظيف خيرٌ من أطولَ مثقوب.
+        """
+        import time as _t
+
+        cfg_dir = _config_dir(config_dir)
+        cfg = _market_cfg(cfg_dir, market)
+        syms = symbols or self.resolve_symbols(market, config_dir=config_dir)
+        universe = self.live_universe(market, config_dir=config_dir)
+
+        budget = (deadline_seconds if deadline_seconds is not None
+                  else float(getattr(self.config, "resurrect_seconds", 600.0)))
+        cap = (max_pairs if max_pairs is not None
+               else int(getattr(self.config, "resurrect_max_pairs", 1000)))
+
+        started = _t.monotonic()
+        adapter = get_adapter(cfg.adapter)
+        rebuilt: list[str] = []
+        patched: list[str] = []
+        buried: list[str] = []
+        failed: list[dict] = []
+        remaining: list[str] = []
+        stopped = ""
+
+        for sym in syms:
+            if stopped:
+                remaining.append(sym)
+                continue
+            if budget > 0 and (_t.monotonic() - started) >= budget:
+                stopped = f"نفد الوقت ({budget:g}ث)"
+                remaining.append(sym)
+                continue
+            if cap > 0 and len(rebuilt) + len(patched) >= cap:
+                stopped = f"بلغ الحدّ ({cap} رمزاً)"
+                remaining.append(sym)
+                continue
+
+            info = assess_freshness(market, sym, timeframe,
+                                    config=self.config)
+            if info["status"] != FreshnessStatus.DEAD.value:
+                continue
+
+            # ═══ المشطوب حقاً يُترك ═══
+            #
+            # ملاحقته آلافُ طلباتٍ لا تعود بشمعة — وهي ما ضخّم
+            # سجلّ الأحداث إلى ٣٠٥ ميغابايت أوّل مرّة.
+            if universe is not None and sym not in universe:
+                buried.append(sym)
+                continue
+
+            behind = info.get("bars_behind") or 0
+            try:
+                if behind > cfg.candles:
+                    # الفجوة أوسع من جلبة: يُعاد البناء لا يُدمَج
+                    fresh = adapter.fetch(sym, timeframe, cfg.candles)
+                    if fresh is None or getattr(fresh, "empty", False):
+                        failed.append({"symbol": sym, "error": "جلبٌ فارغ"})
+                        continue
+                    storage.save(market, sym, timeframe, fresh)
+                    rebuilt.append(sym)
+                else:
+                    r = self.sync_pair(market, sym, timeframe, force=True,
+                                       config_dir=config_dir)
+                    if r.get("ok"):
+                        patched.append(sym)
+                    else:
+                        failed.append({"symbol": sym,
+                                       "error": str(r.get("reason"))[:80]})
+            except Exception as exc:  # noqa: BLE001
+                failed.append({"symbol": sym,
+                               "error": f"{type(exc).__name__}: "
+                                        f"{str(exc)[:80]}"})
+
+        log.info("إحياء %s/%s: %d أُعيد بناؤه · %d رُقّع · %d مشطوبٌ حقاً "
+                 "· %d فشل · %d بقي%s",
+                 market, timeframe, len(rebuilt), len(patched), len(buried),
+                 len(failed), len(remaining),
+                 f" ({stopped})" if stopped else "")
+        return {
+            "rebuilt": len(rebuilt), "patched": len(patched),
+            "buried": len(buried), "failed": len(failed),
+            "remaining": len(remaining), "stopped": stopped,
+            "universe_known": universe is not None,
+            "universe_size": 0 if universe is None else len(universe),
+            "rebuilt_symbols": rebuilt, "buried_symbols": buried,
+            "failures": failed[:20],
+            "elapsed": round(_t.monotonic() - started, 1),
+        }
+
     # ── scan gate ─────────────────────────────────────────────
 
     def scan_freshness_gate(
@@ -847,6 +1004,24 @@ class MarketDataSyncService:
         excluded = [a["symbol"] for a in assessments
                     if a["status"] not in _USABLE]
 
+        # ═══ ومقبرةٌ جماعية ليست شطباً جماعياً ═══
+        #
+        # رمزٌ يُشطب وحده، وعشرةٌ تُشطب في شهر. أمّا أن يصير
+        # **كلّ** السوق مشطوباً في وقتٍ واحد فليس شطباً — بل
+        # مزامنةٌ توقّفت أكثر من مئة شمعة. والفرع أعلاه لا يعالجه:
+        # هو يُنعش ``alive`` والمشطوب ليس منهم.
+        #
+        # فحين لا يبقى رمزٌ واحد صالح والمشطوبون كثرة، يُسأل كونُ
+        # المنصّة: من كان فيه اليوم يُعاد بناؤه.
+        if auto_refresh and not usable and counts["dead"]:
+            res = self.resurrect(market, timeframe, symbols=syms,
+                                 config_dir=config_dir)
+            if res["rebuilt"] or res["patched"]:
+                return self.scan_freshness_gate(
+                    market, timeframe, symbols=syms, auto_refresh=False,
+                    config_dir=config_dir,
+                )
+
         if not usable:
             # ═══ لماذا لا يُستثنى «السوق مغلق» هنا ═══
             #
@@ -867,9 +1042,19 @@ class MarketDataSyncService:
                 "code": "MARKET_DATA_STALE",
                 # الرقم في الرسالة لا في الحقول وحدها: «متأخرة جداً»
                 # بلا عدد لا يقول أهي ثلاثة رموز أم أربعمئة.
-                "reason": (f"لا رمز واحد ببيانات صالحة — "
-                           f"{counts['critical']} حرجاً و{counts['dead']} "
-                           f"مشطوباً من {len(assessments)}"),
+                # ═══ والعدد وحده لا يقول ماذا يُفعل ═══
+                #
+                # «٥٣٧ مشطوباً من ٥٣٨» رقمٌ صحيح وصامت. وشطبٌ يعمّ
+                # السوق كلّه ليس شطباً بل مزامنةً توقّفت، وعلاجه
+                # مختلفٌ تماماً — فيُقال.
+                "reason": (
+                    f"لا رمز واحد ببيانات صالحة — "
+                    f"{counts['critical']} حرجاً و{counts['dead']} "
+                    f"مشطوباً من {len(assessments)}"
+                    + (" · شطبٌ يعمّ السوق = مزامنةٌ توقّفت لا رموزٌ "
+                       "شُطبت؛ شغّل tools_resurrect.py --apply"
+                       if counts["dead"] >= max(5, len(assessments) // 2)
+                       else "")),
                 "counts": counts,
                 "living": living,
                 "dead": counts["dead"],

@@ -171,10 +171,68 @@ def main() -> int:
                    "err": "خطأ غير متوقّع — انسخ السطر أعلاه"}[why]
             print(f"  ✗ {names[m]:10s} لا يصل — {fix}")
 
-    if not bad:
-        print("\nكل المصادر تصل. فالتأخّر ليس من الشبكة:")
+    # ═══ والمحوّل الحقيقيّ — لا رابطٌ مكتوبٌ هنا ═══
+    #
+    # الفحوص أعلاه تبني الطلب بترويساتها، فقد تنجح كلّها والنظام
+    # يفشل. وهذا وقع فعلاً: نقلتُ ``_get`` إلى مجمّع الاتّصالات
+    # وأسقطتُ ترويسة ‎Mozilla‎، فصارت ياهو تردّ ‎429‎ على المحوّل
+    # وحده — وهذا الفاحص يقول «ياهو تصل» لأنّه يرسل ترويسته.
+    #
+    # ففاحصٌ يتجاوز الكود الذي يفحصه يكذب. والسطر الحاسم هو ما
+    # يلي: نداءٌ للمحوّل نفسه كما تناديه المزامنة.
+    print("\n═══ المحوّلات كما تستعملها المزامنة ═══")
+    adapter_bad = 0
+    try:
+        from pathlib import Path as _P
+
+        sys.path.insert(0, str(_P(__file__).parent / "web"))
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+        from scanner.adapters import get_adapter, http_pool
+        from scanner.market_sync import get_service
+
+        svc = get_service()
+        cfg_dir = _P(__file__).parent / "config"
+        for m, label in names.items():
+            try:
+                cfg_m = svc._market_cfg(cfg_dir, m)
+                syms = svc.resolve_symbols(m, config_dir=cfg_dir)
+                if not syms:
+                    print(f"  ⊘ {label:10s} لا رموز في الإعداد")
+                    continue
+                ad = get_adapter(cfg_m.adapter)
+                tf = svc._timeframes_for(cfg_m)[0]
+                t0 = time.time()
+                df = ad.fetch(syms[0], tf, 3)
+                ms = (time.time() - t0) * 1000
+                n = 0 if df is None else len(df)
+                if n:
+                    print(f"  ✓ {label:10s} {cfg_m.adapter}·{syms[0]}·{tf} "
+                          f"→ {n} شمعة · {ms:,.0f}ms")
+                else:
+                    adapter_bad += 1
+                    print(f"  ✗ {label:10s} {cfg_m.adapter} ردّ بلا شموع "
+                          f"— جلبٌ فارغ لا خطأ")
+            except Exception as exc:  # noqa: BLE001
+                adapter_bad += 1
+                print(f"  ✗ {label:10s} {type(exc).__name__}: "
+                      f"{str(exc)[:140]}")
+        st = http_pool.stats()
+        print(f"\n  المجمّع: {'مُفعَّل' if st['pool_enabled'] else '**مُطفأ**'}"
+              f" · {st['pooled']} مجمَّع · {st['fallback']} ارتداد"
+              f" · {st['errors']} خطأ")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ⚠ تعذّر تحميل المحوّلات: {type(exc).__name__}: "
+              f"{str(exc)[:140]}")
+        print("    (شغّله داخل الحاوية: docker exec <web> python "
+              "tools_doctor_net.py)")
+
+    if adapter_bad:
+        print("\n⚠ مصدرٌ يصل والمحوّل يفشل = فرقٌ في الطلب نفسه،")
+        print("  وأوّل ما يُشتبَه به: ترويسة ‎User-Agent‎ ساقطة.")
+    elif not bad:
+        print("\nكل المصادر تصل والمحوّلات تجلب. فالتأخّر ليس من الشبكة:")
         print("  راجع /jobs/ — مهمّة market_sync قد تكون متعطّلة أو مُشبَعة.")
-    return 1 if bad else 0
+    return 1 if (bad or adapter_bad) else 0
 
 
 if __name__ == "__main__":

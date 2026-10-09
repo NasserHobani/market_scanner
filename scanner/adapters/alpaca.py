@@ -601,11 +601,16 @@ class AlpacaAdapter(MarketAdapter):
         delay = 1.0
         last: Exception | None = None
 
+        # ‏السوق الأمريكي ٤١٦ رمزاً × الفريمات. والمصافحة لكل طلبٍ
+        # ثمنُها نفسه هنا — انظر ``http_pool`` للقياس.
+        # والترويسات تُمرَّر للطلب وحده لا تُضاف إلى الجلسة: المفتاح
+        # لا يُرسَل إلى Binance وYahoo.
+        from . import http_pool
+
         for attempt in range(self.retries):
             try:
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                return http_pool.get_json(url, timeout=self.timeout,
+                                          headers=headers)
             except urllib.error.HTTPError as exc:
                 last = exc
                 body = _safe_body(exc)
