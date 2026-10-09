@@ -197,6 +197,62 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
 
+    def _capture_pits(self, jobs: list[tuple], cfg, timeframe: str,
+                      score_by_symbol: dict) -> None:
+        """لقطات نقطة-الزمن — بعد تثبيت النتائج، صفّاً صفّاً.
+
+        كانت داخل معاملة الحفظ، فموتُ العملية أثناءها يُسقط المسح
+        كلّه. وهنا كل صفٍّ مستقلّ: يُلتقط، ثمّ يُربط بنتيجته وبصفقته
+        إن فُتحت بلا رابط. وفشلُ واحد لا يمسّ غيره ولا ما حُفظ قبله.
+
+        وصفوف التوصيات أوّلاً: هي التي يُثرى سياقها ويُبنى عليها
+        قرار. فإن ضاق الوقت أو الذاكرة نقص الأقلّ أهمّية.
+        """
+        if not jobs:
+            return
+        from dashboard.models import Trade
+        from scanner.feature_snapshots import PointInTimeSnapshotService
+
+        jobs = sorted(jobs, key=lambda j: not _actionable(j[2]))
+        pit_svc = PointInTimeSnapshotService()     # واحدةٌ لا لكل صفّ
+        done = failed = 0
+        for sym, row, reco, snapshot_id, candle_time in jobs:
+            try:
+                snap = pit_svc.capture_from_scan_row(
+                    symbol=sym, market=cfg.name, timeframe=timeframe,
+                    candle_time=candle_time.astimezone(
+                        dt_timezone.utc).isoformat(),
+                    row=row,
+                    reco=reco.as_dict() if reco and hasattr(reco, "as_dict")
+                    else (reco if isinstance(reco, dict) else {}),
+                    legacy_snapshot_id=snapshot_id,
+                    score_result=score_by_symbol.get(sym),
+                    # الإثراء الثقيل لمن له توصية وحده: بحث التشابه
+                    # وقاعدة المعرفة ثانيتان للرمز — ودقائقُ على كلّ
+                    # رمزٍ لن تُتّخذ عليه خطوة.
+                    skip_enrichment=not _actionable(reco),
+                )
+                pit_id = getattr(snap, "snapshot_id", "") or ""
+                reco_id = getattr(snap, "recommendation_id", "") or ""
+                if not (pit_id or reco_id):
+                    continue
+                key = dict(symbol=sym, market=cfg.name, timeframe=timeframe,
+                           candle_time=candle_time)
+                ScanResult.objects.filter(**key).update(
+                    pit_snapshot_id=pit_id, recommendation_id=reco_id)
+                # الصفقة فُتحت قبل وجود اللقطة: تُربط الآن، وما رُبط
+                # من قبل لا يُستبدل.
+                Trade.objects.filter(**key, pit_snapshot_id="").update(
+                    pit_snapshot_id=pit_id)
+                Trade.objects.filter(**key, recommendation_id="").update(
+                    recommendation_id=reco_id)
+                done += 1
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                log.warning("PIT capture failed %s %s: %s",
+                            sym, timeframe, str(exc)[:160])
+        self.stdout.write(f"  لقطات: {done} · فشل {failed}")
+
     def _one_pass(self, cfg, timeframe: str, opts) -> None:
         adapter = get_adapter(cfg.adapter)
         started = time.time()
@@ -625,6 +681,7 @@ class Command(BaseCommand):
         score_by_symbol = {r.symbol: r for r in results}
         elapsed = time.time() - started
         _tdb = time.perf_counter()
+        pit_jobs: list[tuple] = []
 
         with transaction.atomic():
             run = ScanRun.objects.create(
@@ -670,42 +727,21 @@ class Command(BaseCommand):
                         "blocker": str(r.get("blocker", ""))[:64],
                     },
                 )
+                # ═══ اللقطة الثقيلة بعد الحفظ لا داخله ═══
+                #
+                # كانت تُلتقط هنا، داخل ``transaction.atomic()``: إثراءٌ
+                # يقرأ قاعدة المعرفة والتشابه والتجارب لكلّ رمزٍ له
+                # توصية. وحين قتلت النواةُ العمليةَ في منتصفه (``Killed``)
+                # تراجعت المعاملة كلّها — فلم يُحفظ **صفٌّ واحد**، وبقيت
+                # الشاشة على مسحٍ قديم، وكأنّ المسح لم يجرِ.
+                #
+                # فالنتائج تُحفظ أوّلاً وتُثبَّت، واللقطة بعدها خارج
+                # المعاملة وتُربط بالتحديث. وإن ماتت العملية أثناءها
+                # بقيت النتائج على الشاشة ونقصت الروابط وحدها.
                 pit_id = ""
                 reco_id = ""
-                try:
-                    from scanner.feature_snapshots import PointInTimeSnapshotService
-                    pit_svc = PointInTimeSnapshotService()
-                    pit_snap = pit_svc.capture_from_scan_row(
-                        symbol=r["symbol"],
-                        market=cfg.name,
-                        timeframe=timeframe,
-                        candle_time=candle_time.astimezone(dt_timezone.utc).isoformat(),
-                        row=dict(r),
-                        reco=reco.as_dict() if reco and hasattr(reco, "as_dict") else (
-                            reco if isinstance(reco, dict) else {}
-                        ),
-                        legacy_snapshot_id=snapshot_id,
-                        score_result=score_by_symbol.get(r["symbol"]),
-                        # ═══ الإثراء لمن له توصية وحده ═══
-                        #
-                        # الإثراء يشغّل بحث التشابه وقاعدة المعرفة —
-                        # ثانيتان للرمز بعد المذاكرة، وستّون قبلها.
-                        # وتشغيله على كل رمز يعني دقائق على رموزٍ
-                        # لن تُتَّخذ عليها خطوة.
-                        #
-                        # ولقطة نقطة-الزمن تُحفظ لكلٍّ على أي حال:
-                        # ما يُحذف هو السياق الثقيل لا السجلّ. ومن
-                        # صار له توصية يُثرى كاملاً — وهو من يُبنى
-                        # عليه قرار.
-                        skip_enrichment=not _actionable(reco),
-                    )
-                    pit_id = getattr(pit_snap, "snapshot_id", "") or ""
-                    reco_id = getattr(pit_snap, "recommendation_id", "") or ""
-                except Exception as exc:  # noqa: BLE001 — snapshot failure must not block scan
-                    log.warning(
-                        "PIT capture failed %s %s: %s",
-                        r.get("symbol"), timeframe, str(exc)[:160],
-                    )
+                pit_jobs.append((r["symbol"], dict(r), reco, snapshot_id,
+                                 candle_time))
                 obj, created = ScanResult.objects.update_or_create(
                     symbol=r["symbol"], market=cfg.name, timeframe=timeframe,
                     candle_time=candle_time,
@@ -758,6 +794,11 @@ class Command(BaseCommand):
                     fired.append(hit)
             skipped = (max(0, len(reco_candidates) - cap)
                        + max(0, len(brk_candidates) - cap)) if cap else 0
+
+        # ═══ اللقطات بعد التثبيت — النتائج على الشاشة مهما جرى هنا ═══
+        _pit_t = time.perf_counter()
+        self._capture_pits(pit_jobs, cfg, timeframe, score_by_symbol)
+        timing["pit"] = time.perf_counter() - _pit_t
 
         # مراجعة المستشار — رأي مسجَّل لا قرار. تجري بعد فتح الصفقات
         # عمداً حتى تحمل كل مراجعة معرّف **الصفقة** التي تحكم عليها.
@@ -839,7 +880,8 @@ class Command(BaseCommand):
             self.stderr.write(f"تعذّر حسم الصفقات: {str(exc)[:150]}")
 
         n = max(1, len(results) + failed)
-        timing["db"] = time.perf_counter() - _tdb
+        timing["db"] = (time.perf_counter() - _tdb
+                        - timing.get("pit", 0.0))
         # ═══ والمجموع يُطابَق على الكلّ ═══
         #
         # تفصيلٌ لا يُجمع لا يُكتشَف نقصه. و``أخرى`` هي الفرق بين
@@ -847,13 +889,15 @@ class Command(BaseCommand):
         # وهو أهمّ سطرٍ في هذا الإخراج.
         total = time.time() - started
         known = (timing["gate"] + timing["net"] + timing["calc"]
-                 + timing["read"] + timing["write"] + timing["db"])
+                 + timing["read"] + timing["write"] + timing["db"]
+                 + timing.get("pit", 0.0))
         other = max(0.0, total - known)
         self.stdout.write(
             f"  الزمن ({total:.1f}ث): بوّابة {timing['gate']:.1f} · "
             f"شبكة {timing['net']:.1f} · تحليل {timing['calc']:.1f} · "
             f"قراءة {timing['read']:.1f} · كتابة {timing['write']:.1f} · "
-            f"قاعدة {timing['db']:.1f} · أخرى {other:.1f}")
+            f"قاعدة {timing['db']:.1f} · لقطات {timing.get('pit', 0.0):.1f} · "
+            f"أخرى {other:.1f}")
         self.stdout.write(
             f"  ·  {timing['bars'] / n:.0f} شمعة/رمز · "
             f"{timing['unchanged']} بلا جديد")
@@ -864,6 +908,7 @@ class Command(BaseCommand):
         parts = {"البوّابة": timing["gate"], "الشبكة": timing["net"],
                  "التحليل": timing["calc"], "القرص": timing["read"]
                  + timing["write"], "القاعدة": timing["db"],
+                 "اللقطات": timing.get("pit", 0.0),
                  "غير مقيس": other}
         worst, wsec = max(parts.items(), key=lambda kv: kv[1])
         if total > 0:

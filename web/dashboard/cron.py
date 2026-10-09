@@ -263,9 +263,23 @@ def _h_market_sync(payload: dict) -> str:
         raise JobBusy(out.get("reason") or "المزامنة مشغولة")
     if not out.get("ok"):
         raise RuntimeError(out.get("reason") or "تعذّرت المزامنة")
-    return (f"نجح {out.get('successful', 0)}"
-            f" · فشل {out.get('failed', 0)}"
-            f" · {out.get('elapsed_sec', 0)}ث")
+    ok_n = int(out.get("successful") or 0)
+    bad_n = int(out.get("failed") or 0)
+    why = out.get("top_reason") or ""
+    # ═══ صفر نجاحٍ ليس «ok» ═══
+    #
+    # كان هذا يعيد نصّاً، فتُسجَّل المهمّة خضراء: «ok · نجح 0 · فشل
+    # 4620». مزامنةٌ لم تنجح في زوجٍ واحد عُرضت ناجحةً أيّاماً، وتجمّد
+    # القرص تحتها، والإنذار الوحيد كان رقماً في عمود.
+    #
+    # فإن لم ينجح شيء وفشل شيء — المهمّة **فشلت**، وبسببها.
+    if ok_n == 0 and bad_n > 0:
+        raise RuntimeError(f"فشل كل الأزواج ({bad_n}) — {why}"[:280])
+    msg = (f"نجح {ok_n} · فشل {bad_n}"
+           f" · {out.get('elapsed_sec', 0)}ث")
+    if bad_n and why:
+        msg += f" · أكثر الأسباب: {why}"
+    return msg[:290]
 
 
 def _h_watch_monitor(payload: dict) -> str:

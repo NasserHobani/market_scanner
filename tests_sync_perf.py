@@ -114,7 +114,15 @@ c("  و‎force‎ يتخطّاه", "if not force:" in _su)
 
 # ═══════════ ٤) ملفّ السوق يُقرأ مرّةً ═══════════
 c("٤ ذاكرةٌ لملفّ السوق", "_cfg_cache" in code and "def _market_cfg" in code)
-c("  ويُستعمل في المزامنة", "_market_cfg(cfg_dir, market)" in code)
+c("  ويُستعمل في المزامنة — كطريقة", "self._market_cfg(cfg_dir, market)" in code)
+# ═══ والاسم المجرّد ممنوع ═══
+#
+# ‏``_market_cfg`` طريقةٌ لا دالّة. ونداؤها مجرّدةً رمى ‏NameError‏ في
+# كل زوج — «نجح 0 · فشل 4620» أيّاماً. والفحص السابق كان يطابق
+# ‏"_market_cfg(cfg_dir, market)"‏ فيجدها داخل الخاطئة نفسها ويمرّ.
+import re as _re
+c("  ولا نداءَ مجرّداً لها",
+  not _re.search(r"(?<![.\w])_market_cfg\(", code.replace("def _market_cfg(", "")))
 c("  وسببه", "خمسة آلاف تحليلٍ لملفٍّ واحد" in src)
 
 

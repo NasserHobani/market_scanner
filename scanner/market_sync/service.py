@@ -420,7 +420,7 @@ class MarketDataSyncService:
         config_dir: Path | None,
     ) -> dict[str, Any]:
         cfg_dir = _config_dir(config_dir)
-        cfg = _market_cfg(cfg_dir, market)
+        cfg = self._market_cfg(cfg_dir, market)
 
         # ═══ الفحص الرخيص قبل القراءة الكاملة ═══
         #
@@ -733,7 +733,7 @@ class MarketDataSyncService:
         قديمة.
         """
         try:
-            cfg = _market_cfg(_config_dir(config_dir), market)
+            cfg = self._market_cfg(_config_dir(config_dir), market)
             name = getattr(cfg, "universe_adapter", "") or cfg.adapter
             ad = get_adapter(name)
             if hasattr(ad, "usdt_universe"):
@@ -795,7 +795,7 @@ class MarketDataSyncService:
         import time as _t
 
         cfg_dir = _config_dir(config_dir)
-        cfg = _market_cfg(cfg_dir, market)
+        cfg = self._market_cfg(cfg_dir, market)
         syms = symbols or self.resolve_symbols(market, config_dir=config_dir)
         universe = self.live_universe(market, config_dir=config_dir)
 

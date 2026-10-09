@@ -60,33 +60,78 @@ class KnowledgeRepository:
         قديمة بعد أوّل كتابة. والتحقّق من حالة الملفّ يجعل الجواب
         صحيحاً دائماً ويُعاد حسابه فقط حين يتغيّر فعلاً.
         """
+        # ═══ والمذاكرة وحدها لم تكفِ — الإلحاق يُبطلها في كل صفّ ═══
+        #
+        # ‏المسح **يُلحق** بهذا الملفّ أثناء الحفظ (لقطة المعرفة لكل
+        # رمزٍ له توصية)، ثمّ يقرؤه بحثُ التشابه فوراً. فكل إلحاقٍ يغيّر
+        # (mtime, size)، فتُبطَل المذاكرة، فيُعاد تحليل الملفّ **كاملاً**
+        # — مرّةً لكل صفّ. عملٌ تربيعيّ، وذروةُ ذاكرةٍ تساوي الملفّ
+        # نصّاً + أسطراً + كائنات، في كل مرّة.
+        #
+        # وكانت ``read_text().splitlines()`` تحمل الملفّ نصّاً ثمّ
+        # قائمةَ أسطر **معاً** فوق الكائنات — ثلاث نسخ في لحظةٍ واحدة.
+        # وهذا ما يرجَّح أنّه قتل المسح في مرحلة الحفظ (``Killed``).
+        #
+        # ═══ فما صار ═══
+        #
+        # الملفّ إلحاقيّ، فما زاد فيه يُقرأ **وحده**: ‏``seek`` إلى حيث
+        # انتهينا، وتحليل الذيل الجديد، وإلحاقه بالقائمة. والقراءة
+        # سطراً سطراً لا نصّاً كاملاً. ولا يُعاد التحليل الكامل إلّا
+        # إن **صغُر** الملفّ (قُصّ أو استُبدل).
         if not self.path.exists():
             return []
         try:
             st = self.path.stat()
-            key = (str(self.path), st.st_mtime_ns, st.st_size)
         except OSError:
-            key = None
-        if key is not None:
-            hit = _CACHE.get(key)
-            if hit is not None:
-                return hit
+            return self._parse_from(0)[0]
 
+        path_key = str(self.path)
+        hit = _CACHE.get(path_key)
+        if hit is not None:
+            ino, offset, mtime, records = hit
+            if ino == st.st_ino and offset == st.st_size \
+                    and mtime == st.st_mtime_ns:
+                return records
+            if ino == st.st_ino and st.st_size > offset:
+                new, end = self._parse_from(offset)
+                # قائمةٌ جديدة بالمراجع لا نسخٌ للكائنات: ثمانية بايتات
+                # للسجلّ. ومن يحمل القائمة القديمة لا تتغيّر تحت يده.
+                records = records + new
+                _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records)
+                return records
+
+        records, end = self._parse_from(0)
+        _CACHE.clear()          # مدخلٌ واحد: لا تراكم بين ملفّات
+        _CACHE[path_key] = (st.st_ino, end, st.st_mtime_ns, records)
+        return records
+
+    def _parse_from(self, offset: int) -> tuple[list[KnowledgeRecord], int]:
+        """يحلّل من ``offset`` إلى آخر سطرٍ **مكتمل** — ويعيد موضعه.
+
+        السطر الأخير قد يكون نصفَ كتابةٍ جارية: يُترك ويُقرأ في المرّة
+        التالية كاملاً، لا يُتلف ولا يُحسب مرّتين.
+        """
         out: list[KnowledgeRecord] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(KnowledgeRecord.from_dict(json.loads(line)))
-            except (json.JSONDecodeError, KeyError, ValueError):
-                continue
-        if key is not None:
-            # مدخلٌ واحد لكل ملف: المفتاح يحمل حالته، فالقديم لا
-            # يُستعمل ولا يتراكم.
-            _CACHE.clear()
-            _CACHE[key] = out
-        return out
+        end = offset
+        try:
+            with self.path.open("rb") as fh:
+                fh.seek(offset)
+                for raw in fh:
+                    if not raw.endswith(b"\n"):
+                        break               # كتابةٌ لم تكتمل
+                    end += len(raw)
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        out.append(KnowledgeRecord.from_dict(
+                            json.loads(line)))
+                    except (json.JSONDecodeError, KeyError, ValueError,
+                            UnicodeDecodeError):
+                        continue
+        except OSError:
+            pass
+        return out, end
 
     def save(self, record: KnowledgeRecord) -> str:
         if not record.record_id:
@@ -117,7 +162,9 @@ class KnowledgeRepository:
             rows = [r for r in rows if r.payload.get("market") == market]
         if timeframe:
             rows = [r for r in rows if r.payload.get("timeframe") == timeframe]
-        rows.sort(key=lambda r: r.created_at, reverse=True)
+        # ``sorted`` لا ``.sort()``: بلا مُرشِّح تكون ``rows`` هي قائمة
+        # المذاكرة نفسها، وترتيبها في مكانها يغيّر ما يراه كل نداءٍ بعده.
+        rows = sorted(rows, key=lambda r: r.created_at, reverse=True)
         return rows[:limit]
 
     def history(self, event_id: str) -> list[KnowledgeRecord]:

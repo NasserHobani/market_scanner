@@ -45,8 +45,19 @@ def _cfg(tmp: Path) -> MarketSyncConfig:
     )
 
 
-def _ohlc(n: int = 10, start: str = "2026-08-11 10:00:00", freq: str = "1h") -> pd.DataFrame:
-    idx = pd.date_range(start, periods=n, freq=freq, tz="UTC")
+# ═══ البداية نسبيّةٌ للآن لا تاريخٌ ثابت ═══
+#
+# كانت ‎"2026-08-11"‎ ثابتة. ومع مرور الوقت صار الإطار متأخّراً أكثر
+# من ``candles`` (50) — فتعامله المزامنة، بحقّ، كفجوةٍ لا تسعها جلبة
+# وتعيد بناءه بدل الدمج. فاختبارٌ يقصد «تحديثاً تراكمياً» صار يختبر
+# «إعادة بناء» دون أن يتغيّر فيه حرف: الزمن غيّره.
+def _recent_start(n: int = 10) -> str:
+    t = pd.Timestamp.now("UTC").floor("h") - pd.Timedelta(hours=n + 2)
+    return str(t.tz_localize(None))
+
+
+def _ohlc(n: int = 10, start: str | None = None, freq: str = "1h") -> pd.DataFrame:
+    idx = pd.date_range(start or _recent_start(n), periods=n, freq=freq, tz="UTC")
     return pd.DataFrame({
         "open": range(100, 100 + n),
         "high": range(101, 101 + n),

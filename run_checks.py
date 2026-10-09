@@ -68,6 +68,7 @@ STEPS = [
     ("التوقيت وبوّابة المسح", [PY, "tests_timezone_gate.py"]),
     ("عنق المزامنة", [PY, "tests_sync_perf.py"]),
     ("إحياء المشطوبين", [PY, "tests_resurrect.py"]),
+    ("قاعدة المعرفة ذيلاً", [PY, "tests_knowledge_tail.py"]),
     # قبل البقيّة: اسم ملفٍّ ساكن خاطئ يُسقط الصفحة كلّها بـ500
     # تحت ‎DEBUG=0‎، ولا يظهر محلّياً.
     ("الملفّات الساكنة", [PY, "tests_assets.py"]),

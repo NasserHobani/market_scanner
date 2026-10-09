@@ -55,7 +55,23 @@ def run_once(markets: list[str] | None = None, *, force: bool = False) -> dict:
         elapsed = round(time.time() - started, 2)
         ok = sum(int(s.get("successful") or 0) for s in summaries)
         failed = sum(int(s.get("failed") or 0) for s in summaries)
+        # ═══ أكثر أسباب الفشل تكراراً — يُحمَل إلى سجلّ المهامّ ═══
+        #
+        # سجلّ المهامّ قال أيّاماً: «ok · نجح 0 · فشل 4620 · 7.46ث».
+        # أربعة آلاف فشلٍ في سبع ثوانٍ = لا طلب شبكيّ واحد؛ استثناءٌ
+        # فوريّ يتكرّر. وكان السبب ``NameError`` في سطرٍ واحد — لكنّ
+        # العدد وحده لا يقول ذلك، والسبب كان يُبتلع في ملفّ الحالة.
+        from collections import Counter
+        reasons: Counter[str] = Counter()
+        for s in summaries:
+            if s.get("reason"):
+                reasons[str(s["reason"])[:90]] += 1
+            for r in s.get("results") or []:
+                if not r.get("ok"):
+                    reasons[str(r.get("reason") or "?")[:90]] += 1
         summary = {
+            "top_reason": (reasons.most_common(1)[0][0]
+                           if reasons else ""),
             "ok": True,
             "markets": markets,
             "successful": ok,
