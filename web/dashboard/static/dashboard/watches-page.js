@@ -88,6 +88,7 @@
     { key: "rr", label: "R:R", align: "end", width: "6%" },
     { key: "grade", label: "تصنيف", width: "6%" },
     { key: "stoch", label: "التشبّع", width: "11%" },
+    { key: "combo", label: "MACD+Stoch", width: "11%" },
     { key: "reasons", label: "الأسباب", width: "8%" },
     // ═══ «لماذا؟» بوجهين ═══
     //
@@ -123,6 +124,7 @@
           })
         : '<span class="ds-text-muted">—</span>',
       stoch: stochCell(w),
+      combo: comboCell(w),
       reasons: reasonChips(w.reasons),
       why: '<button type="button" class="ds-btn ds-btn--sm w-case" ' +
         'data-symbol="' + DS.esc(w.symbol) + '" data-market="' +
@@ -232,7 +234,7 @@
    *
    * والنقل بأخذ المفاتيح التي تخصّ الترشيح وحدها: تمرير العنوان
    * كلّه يُرسل مفاتيح واجهة (مثل ‎tab‎) لا يعرفها الخادم. */
-  var FILTER_KEYS = ["symbol", "tf", "market", "from", "to", "stoch"];
+  var FILTER_KEYS = ["symbol", "tf", "market", "from", "to", "stoch", "combo"];
 
   /* ═══ رقائق حالة التشبّع ═══
    *
@@ -265,6 +267,54 @@
         (c.hint ? ' title="' + DS.esc(c.hint) + '"' : "") + ">" +
         DS.esc(c.label) + "</a>";
     }).join(" ");
+  }
+
+  /* ═══ رقائق MACD + StochRSI ═══
+   *
+   * الحالة التي وُصفت: MACD يعبر خطّ إشارته صعوداً (تحت الصفر أو
+   * فوقه) خلال آخر ثلاث شموع مغلقة، و‎%K‎ فوق ‎%D‎ — تقاطعاً أو
+   * استمراراً.
+   *
+   * والمؤشّران زخمٌ كلاهما: اتّفاقهما شاهدٌ واحد بصوتين لا شاهدان.
+   * فهي فرزٌ لا درجة، و‎tools_osc_measure.py‎ يقيسها على الصفقات. */
+  var COMBO_CHIPS = [
+    { key: "", label: "الكل" },
+    { key: "aligned", label: "MACD صاعد + Stoch موجب", tone: "success",
+      hint: "تقاطع MACD صاعد خلال ٣ شموع مغلقة، و‎%K‎ فوق ‎%D‎" },
+    { key: "macd_only", label: "MACD وحده", tone: "neutral" },
+    { key: "stoch_only", label: "Stoch وحده", tone: "neutral" },
+  ];
+
+  function renderComboChips() {
+    var host = document.getElementById("combo-chips");
+    if (!host) return;
+    var cur = new URLSearchParams(window.location.search).get("combo") || "";
+    host.innerHTML = COMBO_CHIPS.map(function (c) {
+      var u = new URLSearchParams(window.location.search);
+      if (c.key) u.set("combo", c.key); else u.delete("combo");
+      var q = u.toString();
+      return '<a class="ds-btn ds-btn--sm' +
+        (c.key === cur ? " active" : "") + '" href="' +
+        window.location.pathname + (q ? "?" + q : "") + '"' +
+        (c.hint ? ' title="' + DS.esc(c.hint) + '"' : "") + ">" +
+        DS.esc(c.label) + "</a>";
+    }).join(" ");
+  }
+
+  function comboCell(w) {
+    var c = w.combo || {};
+    if (!c.ok) {
+      return '<span class="ds-text-muted" title="' +
+        DS.esc(c.why || "غير محسوب") + '">—</span>';
+    }
+    var label = c.state === "aligned"
+      ? (c.macd_zone === "below" ? "متوافق · تحت الصفر" : "متوافق · فوق الصفر")
+      : c.state === "macd_only" ? "MACD وحده"
+        : c.state === "stoch_only" ? "Stoch وحده" : "لا";
+    var tone = c.state === "aligned" ? "success" : "neutral";
+    return DS.StatusBadge({ label: label, tone: tone }) +
+      '<span class="ds-text-xs ds-text-muted d-block" dir="auto">' +
+      DS.esc(c.text || "") + "</span>";
   }
 
   /* الحالة تُعرَض على كل صفّ سواء رُشّح أم لا: فلترٌ يخفي معياره
@@ -383,6 +433,7 @@
   }
 
   renderStochChips();
+  renderComboChips();
   load();
   EVERY(20000, load);
 })();

@@ -70,6 +70,7 @@ STEPS = [
     ("إحياء المشطوبين", [PY, "tests_resurrect.py"]),
     ("قاعدة المعرفة ذيلاً", [PY, "tests_knowledge_tail.py"]),
     ("تقليم المخازن", [PY, "tests_compact_stores.py"]),
+    ("MACD + StochRSI", [PY, "tests_macd_stoch.py"]),
     # قبل البقيّة: اسم ملفٍّ ساكن خاطئ يُسقط الصفحة كلّها بـ500
     # تحت ‎DEBUG=0‎، ولا يظهر محلّياً.
     ("الملفّات الساكنة", [PY, "tests_assets.py"]),

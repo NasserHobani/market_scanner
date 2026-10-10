@@ -93,6 +93,7 @@ def main() -> int:
     from scanner import storage
     from scanner.indicators.momentum import macd_state, stoch_rsi, stoch_rsi_state
     from scanner.indicators.trend import macd
+    from scanner.analysis.macd_stoch import evaluate as combo_eval
 
     qs = Trade.objects.filter(status__in=("won", "lost"))
     if args.market:
@@ -176,6 +177,27 @@ def main() -> int:
             }[m["cross"]]].append((won, r))
         else:
             skipped["MACD غير محسوب"] += 1
+
+        # ═══ التركيبة التي وصفتَها: MACD صاعد + StochRSI موجب ═══
+        #
+        # «أنجح الصفقات دائماً» ذاكرة. والذاكرة تحتفظ بالرابحات وتنسى
+        # الخاسرات التي كانت على الحالة نفسها. فتُقاس هنا مقابل كل
+        # البدائل، على الصفقات نفسها، بالتعريف نفسه الذي يفرز الشاشة.
+        cb = combo_eval(past["close"])
+        if cb.get("ok"):
+            buckets["التركيبة · MACD صاعد + StochRSI موجب"][{
+                "aligned": "متوافقة — الحالة الموصوفة",
+                "macd_only": "MACD وحده",
+                "stoch_only": "StochRSI وحده",
+                "none": "لا هذا ولا ذاك",
+            }[cb["state"]]].append((won, r))
+            if cb["state"] == "aligned":
+                buckets["التركيبة · أين عبر MACD"][
+                    "تحت الصفر" if cb["macd_zone"] == "below"
+                    else "فوق الصفر"].append((won, r))
+                buckets["التركيبة · StochRSI"][
+                    "تقاطع" if cb["stoch_mode"] == "cross"
+                    else "استمرار"].append((won, r))
 
     total = [x for g in buckets.values() for v in g.values() for x in v]
     if not total:

@@ -1085,11 +1085,14 @@ def _watch_filters(request) -> dict:
     # لا تُطبَّق في القاعدة: ``Watch`` لا يحمل الحقل، وحسابه من
     # الشموع المخزَّنة. فيُرشَّح بعد الجلب.
     stoch = (request.GET.get("stoch") or "").strip()
+    combo = (request.GET.get("combo") or "").strip()
     return {
         "symbol": _clean_symbol(request.GET.get("symbol")),
         "timeframe": tf if tf in UI_TIMEFRAMES else "",
         "market": market if market in MARKETS else "",
         "stoch": stoch if stoch in stoch_watch.STATES else "",
+        # تقاطع MACD الصاعد مع StochRSI موجب — يُحسب من الشموع كذلك
+        "combo": combo if combo in _combo_states() else "",
         "date_from": start.isoformat() if start else "",
         "date_to": end.isoformat() if end else "",
         "_start": start, "_end": end,
@@ -1104,7 +1107,7 @@ def _with_stoch(rows: list, f: dict) -> list:
     الحالة تُعرَض على كل صفّ سواء رُشّح أم لا — فالقارئ يرى لماذا
     بقي هذا وسقط ذاك. وفلترٌ يخفي معياره يُقرأ سحراً.
     """
-    from scanner.analysis import stoch_watch
+    from scanner.analysis import macd_stoch, stoch_watch
 
     out = []
     for r in rows:
@@ -1118,8 +1121,20 @@ def _with_stoch(rows: list, f: dict) -> list:
         # أنجح ممّا هو.
         if f.get("stoch") and st.get("state") != f["stoch"]:
             continue
+        cb = macd_stoch.read(r.get("market", ""), r.get("symbol", ""),
+                             r.get("timeframe", ""))
+        r["combo"] = cb
+        # والمجهول لا يمرّ هنا أيضاً: «لم يُحسب» ليس «مطابق»
+        if f.get("combo") and cb.get("state") != f["combo"]:
+            continue
         out.append(r)
     return out
+
+
+def _combo_states() -> tuple:
+    from scanner.analysis import macd_stoch
+
+    return macd_stoch.STATES
 
 
 def _apply_watch_filters(qs, f):
